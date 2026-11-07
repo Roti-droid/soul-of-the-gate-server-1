@@ -611,12 +611,12 @@
     if (E2) return;
     var o = el("div", "e2"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Осколки Врат");
     o.innerHTML = '<div class="e2-wrap"><div class="e2-hud"><span class="e2-t e2c" aria-label="Время"></span><span class="e2-hp"></span><span class="e2-sp e2c" aria-label="Искры"></span><span class="e2-best e2c" aria-label="Рекорд"></span></div>' +
-      '<div class="e2-box"><canvas class="e2-cv" width="160" height="160"></canvas><canvas class="e2-hv" aria-hidden="true"></canvas><div class="e2-scr"></div></div>' +
+      '<div class="e2-box"><canvas class="e2-cv" width="160" height="160"></canvas><canvas class="e2-hv" aria-hidden="true"></canvas><div class="e2-scr"></div><div class="e2-tt" role="status" aria-live="polite"></div></div>' +
       '<div class="e2-bar"><span class="e2-help e2c" aria-label="Стрелки, WASD, мышь или палец">' + gl("MOVE: ARROWS OR DRAG") + "</span></div></div>" +
       '<button class="e2-x" type="button" aria-label="Закрыть">✕</button>';
     document.body.appendChild(o);
     o.querySelector(".e2-bar").appendChild(sndBtn());
-    var cv = o.querySelector(".e2-cv"), x = cv.getContext("2d"), scr = o.querySelector(".e2-scr");
+    var cv = o.querySelector(".e2-cv"), x = cv.getContext("2d"), scr = o.querySelector(".e2-scr"), tt = o.querySelector(".e2-tt");
     var hv = o.querySelector(".e2-hv"), hx2 = hv.getContext("2d"), DPR = Math.min(3, window.devicePixelRatio || 1);
     var hudT = o.querySelector(".e2-t"), hudHp = o.querySelector(".e2-hp"), hudSp = o.querySelector(".e2-sp"), hudB = o.querySelector(".e2-best");
     var F = 160, S = 2, ROUND = 40, sp = sprites();
@@ -641,7 +641,18 @@
       st = { t: 0, hp: 3, inv: 0, sparks: 0, hx: F / 2, hy: F * 0.72, sh: [], fx: [], spk: [], next: 0.4, nextSpk: 1.2, shake: 0, sp: sp1,
         qAt: sp1 ? 10 + cryptoBelow(10001) / 1000 : cryptoBelow(8) === 0 ? 6 + cryptoBelow(24001) / 1000 : -1, qDone: false, q: null };
       if (sp1) laughPlay(laughPlan(), 0.3, 0.12);
+      // a cassette: rolled once per round (each tape its own odds), never in the very first round, never with the special seed
+      var played = Number(lsGet(K_PLAYED)) || 0; lsSet(K_PLAYED, String(played + 1));
+      var tid = !sp1 && (played >= 1 || TAPE_DROP) ? tapeRoll() : 0;
+      st.tid = tid; st.tAt = tid ? (TAPE_DROP ? 2 : 5 + cryptoBelow(20001) / 1000) : -1; st.tape = null;
     }
+    function gotTape(id) {
+      var s = tstore(); if (!tapeHave(id)) { s.inv.push(id); tsave(); }
+      burst(st.hx, st.hy, "#ff3a3a", 12); beep(523, 0.08, "square", 0.04, 784); setTimeout(function () { beep(784, 0.1, "square", 0.04, 1046); }, 90);
+      tt.innerHTML = '<span class="e2c">' + gl("CASSETTE") + "</span><small>кассета</small>"; tt.classList.add("on");
+      clearTimeout(tt.t); tt.t = setTimeout(function () { tt.classList.remove("on"); }, 2400);
+    }
+    function tapesBtn() { return '<button class="e2-tp" type="button" aria-label="Записи">' + casSvg("e2-tpg") + '<span class="e2c e2-pw">' + gl("TAPES") + "</span></button>"; }
     function menu(html) { scr.innerHTML = html; scr.classList.add("on"); }
     function start() {
       reset(); state = "play"; scr.classList.remove("on"); scr.innerHTML = ""; beep(330, 0.09, "square", 0.05, 660);
@@ -761,7 +772,7 @@
       menu('<div class="e2c e2-ttl" aria-label="' + (win ? "Врата затихли" : "Душа дрогнула") + '">' + gl(win ? "THE GATE IS SILENT" : "THE SOUL TREMBLED") + "</div>" +
         '<div class="e2c e2-big" aria-label="' + sc.toFixed(1) + '">' + gl(sc.toFixed(1)) + "</div>" +
         '<div class="e2c e2-sub">' + gl(st.t.toFixed(1) + " - * " + st.sparks) + "</div>" + (nb ? '<div class="e2c e2-new" aria-label="Новый рекорд">' + gl("NEW BEST!") + "</div>" : "") +
-        playBtn("AGAIN", "Ещё раз", "e2-go"));
+        '<div class="e2-row">' + playBtn("AGAIN", "Ещё раз", "e2-go") + tapesBtn() + "</div>");
       scr.querySelector(".e2-go").focus();
     }
     function toFootage() { state = "file"; cancelAnimationFrame(raf); close(true); footage(); }
@@ -790,6 +801,7 @@
     scr.addEventListener("click", function (e) {
       if (!e.target.closest) return;
       if (e.target.closest(".e2-first")) { e.stopPropagation(); intro(); return; }
+      if (e.target.closest(".e2-tp")) { e.stopPropagation(); var ps = state; state = "arch"; archiveOpen(function () { if (E2) { state = ps; var b0 = scr.querySelector(".e2-tp"); if (b0) b0.focus({ preventScroll: true }); } }); return; }
       var b = e.target.closest(".e2-go"); if (b) { e.stopPropagation(); start(); }
     });
 
@@ -863,6 +875,11 @@
         if (q.y > F + 4) st.q = null;
         else if (hit(pb, q)) { st.q = null; burst(st.hx, st.hy, st.sp ? "#ff1e3c" : "#ffffff", 16); return st.sp ? toFootage() : sealed(); }
       }
+      if (st.tAt > 0 && !st.tape && st.t >= st.tAt) { st.tAt = -1; var fl = Math.random() < 0.5; st.tape = { x: fl ? 14 : F - 30, y: -10, w: 16, h: 10, vx: fl ? 7 : -7, vy: 17, ph: 0 }; beep(196, 0.25, "triangle", 0.035, 392); }
+      if (st.tape) {
+        var tp = st.tape; tp.ph += dt; tp.x += (tp.vx + Math.sin(tp.ph * 1.7) * 14) * dt; tp.y += tp.vy * dt;
+        if (tp.y > F + 4) st.tape = null; else if (hit(pb, tp)) { st.tape = null; gotTape(st.tid); }
+      }
       for (i = st.fx.length - 1; i >= 0; i--) { var f = st.fx[i]; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.92; f.vy *= 0.92; f.l -= dt; if (f.l <= 0) st.fx.splice(i, 1); }
       if (st.t >= ROUND) { st.t = ROUND; paintHud(); return end(true); }
     }
@@ -929,6 +946,11 @@
         }
         if (!RM) for (i = 0; i < 4; i++) px(q.x - 2 + Math.random() * (q.w + 4), q.y - 2 + Math.random() * (q.h + 4), Math.random() < 0.5 ? "#ff1e3c" : "#fff");
       }
+      if (st.tape) {             // the falling cassette, with a blinking red light
+        var tp = st.tape; x.shadowColor = "rgba(255,40,40,.7)"; x.shadowBlur = RM ? 0 : 3 * S;
+        x.drawImage(casCanvas(), Math.round(tp.x * S), Math.round(tp.y * S), tp.w * S, tp.h * S); x.shadowBlur = 0;
+        if (RM || Math.sin(t * 8) > 0) px(tp.x + tp.w - 2, tp.y - 2, "#ff1e3c");
+      }
       for (i = 0; i < st.fx.length; i++) { var f = st.fx[i]; x.globalAlpha = Math.min(1, f.l * 3); px(f.x, f.y, f.c); }
       x.globalAlpha = 1;
       drawSoul(now, ox, oy);
@@ -951,10 +973,11 @@
     }
     // input
     function onKey(e) {
+      if (state === "arch" || ARC || TP || WHYO || document.querySelector(".e6.on")) return;
       if (e.key === "Escape") { e.preventDefault(); close(); return; }
       var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (/^(Arrow|w$|a$|s$|d$)/.test(k)) { keys[k] = 1; mouse = null; e.preventDefault(); }
-      if ((k === " " || k === "Enter") && state !== "play" && state !== "file" && state !== "intro" && document.activeElement && !document.activeElement.closest(".e2-snd,.e2-x")) {
+      if ((k === " " || k === "Enter") && state !== "play" && state !== "file" && state !== "intro" && document.activeElement && !document.activeElement.closest(".e2-snd,.e2-x,.e2-tp")) {
         e.preventDefault(); if (state === "menu") intro(); else start();
       }
     }
@@ -997,7 +1020,7 @@
       '<div class="e2-heart">' + (HOK ? '<img src="/site/img/heart.png" alt="" draggable="false">' : heartSvg("e2-hpx")) + "</div>" +
       '<div class="e2c e2-sub" aria-label="Уклоняйся от осколков шифра, собирай искры света">' + gl("DODGE THE SHARDS") + "</div>" +
       '<div class="e2c e2-sub">' + gl("CATCH THE LIGHT *") + "</div>" +
-      playBtn("", "Начать", "e2-first"));
+      '<div class="e2-row">' + playBtn("", "Начать", "e2-first") + tapesBtn() + "</div>");
     var hi = scr.querySelector(".e2-heart img");
     if (hi) hi.addEventListener("error", function () { hi.parentNode.innerHTML = heartSvg("e2-hpx"); });
     else if (!HOK) HIMG.addEventListener("load", function () { var b = scr.querySelector(".e2-heart"); if (b && state === "menu") b.innerHTML = '<img src="/site/img/heart.png" alt="" draggable="false">'; });
@@ -1548,6 +1571,1112 @@
     }
     return { size: size, frame: frame, dispose: function () { c.remove(); } };
   }
+  // ---------------------------------------------------------------- «Записи»: found tapes on the same camcorder engine as the special seed.
+  // A round may drop one unmarked cassette (each tape has its own odds, rolled once per round; never in the very first round).
+  // The player learns which tape it is only by putting it into the VCR in the archive. Then it is filed into its numbered slot.
+  // Owner preview: ?tape=N (1–10, or x) plays a tape (+&ft=<s> holds that moment), ?tapes=all opens every slot (nothing is saved),
+  // ?tapes=drop drops a cassette 2 s into every round, ?why=1 plays the «why» scene.
+  var K_TAPES = "sotg.tapes2", K_PLAYED = "sotg.shards.played", K_WHY = "sotg.why";
+  var TAPES = [
+    { k: "plans", en: "BLUEPRINTS", ru: "Чертежи", odds: 5, d: "14.02.19░░", tm: 83560, len: 12, cap: "THE RING MUST BE PERFECT. NO ONE ELSE MAY READ THIS.", line: "Плёнка №1. Почерк не установлен." },
+    { k: "frame", en: "THE FRAME", ru: "Каркас", odds: 5, d: "02.04.19░░", tm: 5588, len: 12, cap: "THE FRAME HOLDS. MY HANDS DO NOT.", line: "Плёнка №2. Сварка шла всю ночь." },
+    { k: "start", en: "FIRST START", ru: "Первый запуск", odds: 5, d: "░░.░░.19░░", tm: 79491, len: 11, cap: "FIRST START. THE LIGHT CAME BACK WRONG.", line: "Плёнка №3. Дата стёрта." },
+    { k: "shadow", en: "THE SHADOW", ru: "Тень", odds: 20, d: "19.06.19░░", tm: 11762, len: 10, cap: "SOMETHING STOOD ON THE OTHER SIDE. IT WAS WAITING.", line: "Плёнка №4. В лаборатории был один человек." },
+    { k: "voices", en: "VOICES", ru: "Голоса", odds: 20, d: "03.07.19░░", tm: 81005, len: 11, cap: "THEY STOPPED COMING. THE RADIO STILL CALLS THEIR NAMES.", line: "Плёнка №5. Стулья так и стоят.",
+      subs: [[2.2, 4.6, "CAN YOU HEAR US"], [5.6, 7.8, "COME BACK"], [8.6, 10.4, "THE GATE IS NOT"]] },
+    { k: "fall", en: "THE FALL", ru: "Приступ", odds: 100, d: "07.08.19░░", tm: 86310, len: 11, cap: "I FELL AGAIN. THE GATE KEPT BEATING WITHOUT ME.", line: "Плёнка №6. Камера пролежала на полу до утра." },
+    { k: "family", en: "FAMILY", ru: "Семья", odds: 100, d: "21.08.19░░", tm: 2470, len: 11, cap: "I PROMISED TO COME HOME BEFORE THE GATE WAS DONE.", line: "Плёнка №7. Рисунок подписан детской рукой." },
+    { k: "heart", en: "THE HEART", ru: "Сердце", odds: 500, d: "11.09.19░░", tm: 10933, len: 12, cap: "IT FORMED BY ITSELF. IT BEATS FASTER WHEN I AM NEAR.", line: "Плёнка №8. Что было в капсуле — не записано." },
+    { k: "step", en: "THE STEP", ru: "Шаг", odds: 1000, d: "30.09.19░░", tm: 86381, len: 13.5, cap: "IT CALLED. I ANSWERED. DO NOT FOLLOW.", line: "Плёнка №9. Последняя из лаборатории." },
+    { k: "beyond", en: "THE OTHER SIDE", ru: "По ту сторону", odds: 5000, d: "░░.░░.░░░░", tm: 0, len: 12, cap: "THE CAMERA WAS FOUND ON THE OTHER SIDE. THE LIGHT WAS STILL ROLLING.", line: "Плёнка №10. Найдена по ту сторону Врат." },
+    { k: "x", en: "???", ru: "???", odds: 1000000, d: "░░.░░.░░░░", tm: 0, len: 9, cap: "WHY", line: "Плёнка ???. Не должна существовать." }
+  ];
+  var TX = TAPES.length;        // 11: the secret one is the last slot
+  function qp(k) { try { return new URLSearchParams(location.search).get(k); } catch (e) { return null; } }
+  var TAPES_ALL = qp("tapes") === "all", TAPE_DROP = qp("tapes") === "drop";
+  // the store: f = filed (numbered) tapes, inv = unmarked cassettes waiting in the tray (their ids are hidden from the player)
+  var TSTORE = null;
+  function tstore() {
+    if (TSTORE) return TSTORE;
+    var s = null; try { s = JSON.parse(lsGet(K_TAPES) || "null"); } catch (e) { s = null; }
+    var ok = function (a) { return Array.isArray(a) ? a.filter(function (v, i) { return v >= 1 && v <= TX && (v | 0) === v && a.indexOf(v) === i; }) : []; };
+    TSTORE = { f: ok(s && s.f), inv: ok(s && s.inv) };
+    if (TAPES_ALL) TSTORE = { f: TAPES.map(function (_, i) { return i + 1; }), inv: [] };
+    return TSTORE;
+  }
+  function tsave() { if (!TAPES_ALL) lsSet(K_TAPES, JSON.stringify(tstore())); }
+  function tapeHave(id) { var s = tstore(); return s.f.indexOf(id) >= 0 || s.inv.indexOf(id) >= 0; }
+  function tapeRoll() {          // one roll per round: each tape its own odds; a tape already owned becomes nothing
+    if (TAPE_DROP) { for (var i = 1; i < TX; i++) if (!tapeHave(i)) return i; return 0; }
+    var r = cryptoBelow(1000000), acc = 0;
+    for (var j = TX; j >= 1; j--) { acc += 1000000 / TAPES[j - 1].odds; if (r < acc) return tapeHave(j) ? 0 : j; }
+    return 0;
+  }
+  function tierOf(odds) { return odds >= 1000000 ? "t6" : odds >= 5000 ? "t5" : odds >= 1000 ? "t4" : odds >= 500 ? "t3" : odds >= 100 ? "t2" : odds >= 20 ? "t1" : "t0"; }
+  function oddsTxt(o) { return "редкость 1/" + String(o).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  var CAS = ["################", "#..............#", "#.LLLLLLLLLLLL.#", "#.RRRRRRRRRRRR.#", "#.LgLLgLgLLgLL.#",
+    "#..WWWWWWWWWW..#", "#..WooWWWWooW..#", "#..WWWWWWWWWW..#", "#...bbbbbbbb...#", "################"];
+  var CASC = { "#": "#d6d6d6", ".": "#232323", L: "#e6dfcb", R: "#c4001f", g: "#3a3a3a", W: "#050505", o: "#bdbdbd", b: "#3c3c3c" }, CASCV = null;
+  function casCanvas() {
+    if (CASCV) return CASCV;
+    var c = document.createElement("canvas"); c.width = 16; c.height = 10; var x = c.getContext("2d");
+    CAS.forEach(function (r, y) { for (var i = 0; i < 16; i++) { x.fillStyle = CASC[r[i]]; x.fillRect(i, y, 1, 1); } });
+    return (CASCV = c);
+  }
+  function casSvg(cls) {
+    var r = "";
+    CAS.forEach(function (row, y) { for (var i = 0; i < 16; i++) r += '<rect x="' + i + '" y="' + y + '" width="1" height="1" fill="' + CASC[row[i]] + '"/>'; });
+    return '<svg class="' + cls + '" viewBox="0 0 16 10" shape-rendering="crispEdges" aria-hidden="true">' + r + "</svg>";
+  }
+  // cipher glyphs painted into a 2D context (chalk, ink, the end card)
+  function glyphText(x, text, x0, y0, p, col, jit) {
+    x.fillStyle = col;
+    for (var i = 0, cx = x0; i < text.length; i++, cx += (GW + 1) * p) {
+      var g = GLYPH[text[i]]; if (!g) continue;
+      for (var k = 0; k < GW * GH; k++) if (g[k]) x.fillRect(cx + (k % GW) * p + (jit ? (Math.random() - 0.5) * jit : 0), y0 + Math.floor(k / GW) * p + (jit ? (Math.random() - 0.5) * jit : 0), p, p);
+    }
+  }
+  // sound: tape hiss and room tone, plus the events of each tape (synth only)
+  function tapeSound() {
+    var a = SND.on ? ac() : null, out = null, nodes = [], hum = null, roar = null;
+    if (a) try {
+      out = a.createGain(); out.gain.value = 0.0001; var comp = a.createDynamicsCompressor(); out.connect(comp); comp.connect(a.destination);
+      out.gain.exponentialRampToValueAtTime(0.34, a.currentTime + 1.2);
+      var n = a.createBufferSource(), hp = a.createBiquadFilter(), ng = a.createGain(); n.buffer = noiseBuf(a); n.loop = true; hp.type = "highpass"; hp.frequency.value = 2600; ng.gain.value = 0.03;
+      n.connect(hp); hp.connect(ng); ng.connect(out); n.start(); nodes.push(n);
+      var o = a.createOscillator(), og = a.createGain(); o.frequency.value = 46; og.gain.value = 0.08; o.connect(og); og.connect(out); o.start(); nodes.push(o);
+    } catch (e) { a = null; }
+    function noise(dur, f, q, vol, type, at) {
+      if (!a) return; var t = a.currentTime + (at || 0), s = a.createBufferSource(), bf = a.createBiquadFilter(), g = a.createGain();
+      s.buffer = noiseBuf(a); bf.type = type || "bandpass"; bf.frequency.value = f; bf.Q.value = q || 1;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(bf); bf.connect(g); g.connect(out); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
+    }
+    function tone(f0, f1, dur, vol, type, at) {
+      if (!a) return; var t = a.currentTime + (at || 0), o = a.createOscillator(), g = a.createGain(); o.type = type || "sine";
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
+    }
+    var stat = null;
+    function roarStat(lv) {      // radio static: band-limited noise
+      if (!a) return;
+      if (!stat) { stat = { s: a.createBufferSource(), f: a.createBiquadFilter(), g: a.createGain() }; stat.s.buffer = noiseBuf(a); stat.s.loop = true;
+        stat.f.type = "bandpass"; stat.f.frequency.value = 1800; stat.f.Q.value = 0.6; stat.g.gain.value = 0; stat.s.connect(stat.f); stat.f.connect(stat.g); stat.g.connect(out); stat.s.start(); nodes.push(stat.s); }
+      stat.g.gain.setTargetAtTime(lv * 0.25, a.currentTime, 0.05);
+    }
+    return {
+      noise: noise, tone: tone,
+      thump: function (v) { tone(66, 34, 0.24, 0.6 * v); tone(58, 34, 0.24, 0.42 * v, "sine", 0.17); },
+      thud: function () { tone(90, 30, 0.5, 0.7); noise(0.35, 300, 0.7, 0.5, "lowpass"); noise(0.08, 2400, 1, 0.25); },
+      pop: function () { noise(0.12, 3200, 0.8, 0.45); noise(0.5, 6000, 0.5, 0.12, "highpass", 0.05); tone(900, 120, 0.15, 0.12, "square"); },
+      sting: function () {
+        [233, 247, 349, 370].forEach(function (f) { tone(f, f * 0.94, 1.1, 0.16, "sawtooth"); });
+        noise(0.9, 1800, 0.4, 0.5); tone(70, 40, 0.9, 0.6);
+      },
+      hum: function (lv) {
+        if (!a) return;
+        if (!hum) { hum = { o: [a.createOscillator(), a.createOscillator()], f: a.createBiquadFilter(), g: a.createGain() };
+          hum.o[0].type = "sawtooth"; hum.o[0].frequency.value = 50; hum.o[1].type = "square"; hum.o[1].frequency.value = 100.6; hum.f.type = "lowpass"; hum.g.gain.value = 0;
+          hum.o.forEach(function (o) { o.connect(hum.f); o.start(); nodes.push(o); }); hum.f.connect(hum.g); hum.g.connect(out); }
+        var t = a.currentTime; hum.g.gain.setTargetAtTime(lv * 0.13, t, 0.05); hum.f.frequency.setTargetAtTime(160 + lv * 1400, t, 0.08);
+        hum.o[0].frequency.setTargetAtTime(50 + lv * 18, t, 0.1);
+      },
+      roar: function (lv) {
+        if (!a) return;
+        if (!roar) { roar = { s: a.createBufferSource(), f: a.createBiquadFilter(), g: a.createGain() }; roar.s.buffer = noiseBuf(a); roar.s.loop = true;
+          roar.f.type = "lowpass"; roar.g.gain.value = 0; roar.s.connect(roar.f); roar.f.connect(roar.g); roar.g.connect(out); roar.s.start(); nodes.push(roar.s); }
+        var t = a.currentTime; roar.g.gain.setTargetAtTime(lv * 0.3, t, 0.08); roar.f.frequency.setTargetAtTime(120 + lv * 2600, t, 0.1);
+      },
+      whisper: function (vol, radio) {       // a breathy, broken «why»: noise + a low buzz through gliding formants (w → a → i)
+        if (!a) return;
+        var t = a.currentTime, dur = 1.0, src = a.createBufferSource(), bz = a.createOscillator(), bg = a.createGain(), mix = a.createGain(), og = a.createGain();
+        var ws = a.createWaveShaper(), cu = new Float32Array(512), dl = a.createDelay(0.5), fb = a.createGain();
+        for (var i = 0; i < 512; i++) { var v = i / 255.5 - 1; cu[i] = Math.tanh(v * (radio ? 6 : 2.5)); }
+        src.buffer = noiseBuf(a); bz.type = "sawtooth"; bz.frequency.setValueAtTime(radio ? 140 : 92, t); bz.frequency.linearRampToValueAtTime(radio ? 120 : 66, t + dur);
+        bg.gain.value = radio ? 0.12 : 0.22; bz.connect(bg); bg.connect(mix); src.connect(mix);
+        [[300, 760, 680, 1], [640, 1220, 2250, 0.7], [2200, 2500, 3000, 0.35]].forEach(function (f) {
+          var bp = a.createBiquadFilter(), g = a.createGain(); bp.type = "bandpass"; bp.Q.value = 9;
+          bp.frequency.setValueAtTime(f[0], t); bp.frequency.linearRampToValueAtTime(f[1], t + 0.28); bp.frequency.linearRampToValueAtTime(f[2], t + 0.8);
+          g.gain.value = f[3]; mix.connect(bp); bp.connect(g); g.connect(og);
+        });
+        og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(vol, t + 0.18); og.gain.setValueAtTime(vol, t + 0.55); og.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        ws.curve = cu; og.connect(ws); ws.connect(out); ws.connect(dl); dl.delayTime.value = 0.17; fb.gain.value = 0.35; dl.connect(fb); fb.connect(dl); fb.connect(out);
+        src.start(t, Math.random() * 0.4); src.stop(t + dur + 0.1); bz.start(t); bz.stop(t + dur + 0.1);
+        setTimeout(function () { try { fb.disconnect(); dl.disconnect(); } catch (e) { /* gone */ } }, (dur + 2) * 1000);
+      },
+      scream: function () {
+        [190, 201, 283, 299, 410].forEach(function (f) { tone(f, f * 0.7, 1.3, 0.2, "sawtooth"); });
+        noise(1.2, 1500, 0.3, 0.75); noise(0.4, 5000, 0.5, 0.3, "highpass"); tone(80, 35, 1.1, 0.8);
+      },
+      stat: function (lv) { roarStat(lv); },
+      stop: function () {
+        if (!a) return; var t = a.currentTime;
+        try { out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); } catch (e) { /* gone */ }
+        nodes.forEach(function (x) { try { x.stop(t + 0.35); } catch (e) { /* gone */ } }); a = null;
+      }
+    };
+  }
+  var sm01 = function (a, b, v) { v = Math.max(0, Math.min(1, (v - a) / (b - a))); return v * v * (3 - 2 * v); };
+  function weldOn(t) { return t > 0.6 && t < 10.4 && t % 2.6 < 1.9 && !(t > 3.8 && t < 4.3); }
+  var WHYD = { k: "why", ru: "почему", d: "░░.░░.░░░░", tm: 0, len: 11.6, subs: [[2.0, 3.3, "WHY..."], [4.4, 5.7, "WHY..."], [6.8, 8.1, "WHY..."]] };
+  // what each tape sounds like, in tape seconds (the same for the 3D and the flat fallback)
+  function tapeAudio(k, t, S, once) {
+    if (k === "plans") { if (!RM && t > 1.8 && t < 6.5 && Math.random() < 0.05) S.noise(0.06 + Math.random() * 0.08, 3800, 2, 0.08); once("f1", t > 9.3, function () { S.tone(1800, 1700, 0.05, 0.05, "square"); }); }
+    if (k === "frame") { if (weldOn(t) && Math.random() < 0.5) S.noise(0.05 + Math.random() * 0.06, 2200 + Math.random() * 3000, 0.7, 0.12 + Math.random() * 0.1); S.hum(weldOn(t) ? 0.15 : 0); }
+    if (k === "start") {
+      S.hum(t < 7.8 ? sm01(2, 7.2, t) : 0);
+      [7.2, 7.45, 7.7].forEach(function (p, i) { once("p" + i, t > p, S.pop); });
+      once("d", t > (RM ? 8 : 8.9), S.thud);
+    }
+    if (k === "shadow") { S.hum(0.12); once("z", t > 5.4, function () { S.tone(2400, 2600, 0.6, 0.03, "square"); }); once("s", t > 7.8, S.sting); }
+    if (k === "voices") {
+      S.stat(0.18 + (Math.random() < 0.1 ? 0.2 : 0) + (t > 2 && t < 10.4 ? 0.1 : 0));
+      [2.3, 3.5, 5.7, 6.6, 8.7].forEach(function (p, i) { once("w" + i, t > p, function () { S.whisper(0.22, true); }); });
+      once("c", t > 6.2, function () { S.tone(320, 290, 0.5, 0.05, "square"); });
+    }
+    if (k === "fall") {
+      S.hum(0.1); if (!RM && t > 0.8 && t < 4.4 && Math.random() < 0.08) S.noise(0.08, 500, 1, 0.12);
+      once("d", t > (RM ? 4.6 : 5.4), S.thud);
+      if (t > 5.8) { var b = Math.floor((t - 5.8) / 0.95); once("b" + b, true, function () { S.thump(Math.max(0.25, 0.8 - b * 0.06)); }); }
+    }
+    if (k === "family") { var tk = Math.floor(t); once("t" + tk, true, function () { S.noise(0.025, 4200, 4, 0.06); }); }
+    if (k === "heart") {
+      S.hum(0.07);
+      if (t > 2.5) { var hb = Math.floor((t - 2.5) / Math.max(0.55, 0.9 - (t - 2.5) * 0.03)); once("h" + hb, true, function () { S.thump(Math.min(0.8, 0.25 + (t - 2.5) * 0.06)); }); }
+      once("g", t > 9.6, function () { S.tone(2600, 2500, 0.5, 0.06); S.tone(2600, 2500, 0.5, 0.05, "sine", 0.22); });
+    }
+    if (k === "step") {
+      S.roar(t < 10.8 ? 0.15 + sm01(0, 9.5, t) * 0.75 : t < 11 ? 0 : 0.08);
+      if (t < 9.1) { var st = Math.floor(t / 0.62); once("st" + st, true, function () { S.tone(110, 50, 0.12, 0.25); S.noise(0.06, 700, 1, 0.12); }); }
+      once("w", t > 9.2, function () { S.noise(1.4, 900, 0.3, 0.5); S.tone(220, 40, 1.4, 0.3, "sawtooth"); });
+      if (t > 11) { var hb2 = Math.floor((t - 11) / 0.86); once("h" + hb2, true, function () { S.thump(0.7); }); }
+    }
+    if (k === "beyond") {
+      S.roar(0.12 + sm01(9, 11.5, t) * 0.2); once("s0", t > 0, function () { S.noise(0.5, 2000, 0.4, 0.3); });
+      if (!RM && Math.random() < 0.025) S.tone(1800 + Math.random() * 1400, 1700 + Math.random() * 1400, 1.4, 0.035);
+      if (t > 1) { var bb = Math.floor((t - 1) / 1.1); once("b" + bb, true, function () { S.thump(0.22); }); }
+    }
+    if (k === "x") {
+      S.stat(0.35 + Math.random() * 0.2);
+      [1.6, 4.4, 7.0].forEach(function (p, i) { once("w" + i, t > p, function () { S.whisper(0.35, true); }); });
+      [3.0, 6.2].forEach(function (p, i) { once("f" + i, t > p, function () { S.noise(0.3, 900, 0.3, 0.5); }); });
+    }
+    if (k === "why") {
+      S.hum(0.05);
+      WHYD.subs.forEach(function (s, i) { once("w" + i, t > s[0], function () { S.whisper(0.55); }); });
+      S.roar(t > 7.6 && t < 9.4 ? sm01(7.6, 9.1, t) * 0.5 : t < 9.4 ? 0.04 : 0.1);
+      once("s", t > 9.15, S.scream);
+    }
+  }
+  var TP = null;
+  function tapePlay(id, after, why) {
+    if (TP || FT) return;
+    var TD = why ? WHYD : TAPES[id - 1]; if (!TD) return;
+    var kind = TD.k;
+    var o = el("div", "e4 e4-tape" + (why ? " e4-why" : "")); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", why ? "Почему" : "Запись №" + (id === TX ? "???" : id) + " — " + TD.ru);
+    o.innerHTML = '<div class="e4-view"></div><canvas class="e4-fx" aria-hidden="true"></canvas>' +
+      '<div class="e4-osd" aria-hidden="true"><span class="e4-rec"><i></i>' + (why ? "PLAY" : "REC") + '</span><span class="e4-ts"></span><span class="e4-bat">▮▯▯</span><span class="e4-tc"></span></div>' +
+      '<button class="e4-x" type="button" aria-label="Пропустить">✕</button>';
+    document.body.appendChild(o); document.body.classList.add("e2-lock");
+    var view = o.querySelector(".e4-view"), fxc = o.querySelector(".e4-fx"), fx = fxc.getContext("2d"), ts = o.querySelector(".e4-ts"), tc = o.querySelector(".e4-tc");
+    var LEN = RM ? Math.round(TD.len * 0.65 * 10) / 10 : TD.len, SC = TD.len / LEN;   // reduced motion: the same tape, shorter
+    var S = tapeSound(), t0 = 0, raf = 0, done = false, impl = null, fired = {}, FREEZE = null, order = null;
+    var once = function (key, c, fn) { if (c && !fired[key]) { fired[key] = 1; fn(); } };
+    if ((qp("tape") || qp("why")) && qp("ft")) FREEZE = Math.max(0, parseFloat(qp("ft")) || 0);
+    TP = { o: o };
+    function osd(t) {
+      if (!TD.tm) { ts.textContent = "░░:░░:░░  " + TD.d; tc.textContent = "SP  ░:░░:" + ("0" + Math.floor(t % 60)).slice(-2); return; }
+      var s = TD.tm + Math.floor(t), h = Math.floor(s / 3600) % 24;
+      ts.textContent = (h < 12 ? "AM " : "PM ") + ("0" + (h % 12 || 12)).slice(-2) + ":" + ("0" + Math.floor(s / 60 % 60)).slice(-2) + ":" + ("0" + s % 60).slice(-2) + "  " + TD.d;
+      tc.textContent = "SP  0:" + ("0" + (id * 7 + Math.floor(t / 60))).slice(-2) + ":" + ("0" + Math.floor(t % 60)).slice(-2);
+    }
+    function fsize() { fxc.width = Math.ceil(innerWidth / 2); fxc.height = Math.ceil(innerHeight / 2); order = null; if (impl && impl.size) impl.size(); }
+    fsize(); addEventListener("resize", fsize);
+    function centred(text, cy, p, col) { var tw = text.length * (GW + 1) * p - p; glyphText(fx, text, Math.round((fxc.width - tw) / 2), Math.round(cy - GH * p / 2), p, col, RM ? 0 : p * 0.25); }
+    function overlay(t) {
+      var W = fxc.width, H = fxc.height; fx.clearRect(0, 0, W, H);
+      var black = kind === "step" && t >= 12.3 || kind === "shadow" && t >= 8.15;
+      if (black) {
+        fx.fillStyle = "#000"; fx.fillRect(0, 0, W, H);
+        if (!RM) { fx.fillStyle = "rgba(255,255,255,.07)"; for (var q = 0; q < 160; q++) fx.fillRect(Math.random() * W | 0, Math.random() * H | 0, 1, 1); }
+      }
+      if (kind === "step" && t >= 12.3 && (RM || Math.random() > 0.06)) centred("TAPE END", H / 2, Math.max(1, Math.floor(Math.min(W / 60, H / 30))), "#e8e8e8");
+      (TD.subs || []).forEach(function (s) {
+        if (t < s[0] || t > s[1] || !RM && Math.random() < 0.05) return;
+        centred(s[2], H * 0.8, Math.max(1, Math.min(3, Math.floor(W / (s[2].length * 6 + 10)))), kind === "voices" ? "rgba(200,255,220,.85)" : "rgba(235,225,225,.9)");
+      });
+      if (kind === "why" && t >= 9.55) {       // the screen floods with «?»
+        var p = Math.max(2, Math.round(Math.min(W, H) / 70)), cw = (GW + 1) * p, ch = (GH + 2) * p, cols = Math.ceil(W / cw), rows = Math.ceil(H / ch), N = cols * rows;
+        if (!order || order.length !== N) { order = []; for (var j = 0; j < N; j++) order.push(j); for (j = N - 1; j > 0; j--) { var r = Math.random() * (j + 1) | 0, tmp = order[j]; order[j] = order[r]; order[r] = tmp; } }
+        var f = RM ? 1 : sm01(9.55, 10.3, t), m = Math.floor(N * f);
+        fx.fillStyle = "rgba(0,0,0," + Math.min(1, f * 1.4) + ")"; fx.fillRect(0, 0, W, H);
+        for (j = 0; j < m; j++) { var c = order[j]; glyphText(fx, "?", (c % cols) * cw + (RM ? 0 : (Math.random() - 0.5) * p), Math.floor(c / cols) * ch, p, j % 3 ? "#e6e6e6" : "#ff1e3c"); }
+      }
+      var endK = Math.max(0, 1 - (TD.len - t) / (kind === "why" ? 0.8 : 0.45));
+      if (endK > 0 && kind !== "step") { fx.fillStyle = "rgba(0,0,0," + endK + ")"; fx.fillRect(0, 0, W, H); }
+    }
+    function step(now) {
+      if (done) return;
+      if (!t0) t0 = now;
+      var t = FREEZE != null ? FREEZE : (now - t0) / 1000 * SC;     // tape seconds
+      if (t >= TD.len) return finish();
+      if (FREEZE == null) tapeAudio(kind, t, S, once);
+      if (impl) impl.frame(t);
+      overlay(t); osd(t);
+      raf = requestAnimationFrame(step);
+    }
+    function finish() {
+      if (done) return; done = true; cancelAnimationFrame(raf); S.stop(); if (impl) impl.dispose();
+      removeEventListener("resize", fsize); document.removeEventListener("keydown", onKey);
+      TP = null; o.remove(); if (!E2 && !ARC) document.body.classList.remove("e2-lock");
+      if (why) { if (after) after(); } else tapeCard(id, after);
+    }
+    var onKey = function (e) { if (e.key === "Escape") { e.stopPropagation(); finish(); } };
+    o.querySelector(".e4-x").addEventListener("click", function (e) { e.stopPropagation(); finish(); });
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { o.classList.add("on"); o.focus(); });
+    var go = function (m) { if (done) { if (m) m.dispose(); return; } impl = m; impl.size(); raf = requestAnimationFrame(step); };
+    if (kind === "x") go(tapeX(view));
+    else loadThree().then(function (T) { var m; try { m = tape3d(T, view, kind); } catch (e) { m = null; } go(m || tape2d(view, kind)); }, function () { go(tape2d(view, kind)); });
+    return { finish: finish };
+  }
+  // after a tape: its caption in the cipher + one vague Russian line
+  function tapeCard(id, after) {
+    var TD = TAPES[id - 1], num = id === TX ? "???" : id;
+    var o = el("div", "e3 e3-letter e6"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись №" + num);
+    o.innerHTML = '<div class="e3-red" aria-hidden="true"></div><div class="e3-card e6-card"><p class="e3-head">ЗАПИСЬ №' + num + (id === TX ? "" : " · " + esc(TD.ru.toUpperCase())) + "</p>" +
+      '<div class="e3-cipher e6-text" aria-label="Подпись шифром Врат">' + lineSvg(TD.cap, "e3-g") + "</div>" +
+      '<p class="e3-ru">' + esc(TD.line) + "</p>" +
+      '<button class="e5-x" type="button" aria-label="Закрыть">✕</button></div>';
+    document.body.appendChild(o); document.body.classList.add("e2-lock");
+    var openedAt = performance.now(), shut = false;
+    var close = function () {
+      if (shut) return; shut = true; document.removeEventListener("keydown", onKey); if (!E2 && !ARC) document.body.classList.remove("e2-lock");
+      o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 500);
+      if (after) after();
+    };
+    var onKey = function (e) { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    o.addEventListener("click", function (e) { if (e.target.closest(".e5-x")) return close(); if (performance.now() - openedAt < 600) return; if (!e.target.closest(".e3-card")) close(); });
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { o.classList.add("on"); var b = o.querySelector(".e5-x"); if (b) b.focus({ preventScroll: true }); });
+  }
+  // ---- the tapes in 3D: the same lab, the faceless one, the ring being built
+  var TAPE_FS = "varying vec2 vUv;uniform sampler2D tD;uniform float uT,uAb,uGr,uBl,uTear,uRed,uExp,uK;uniform vec2 uRes;" +
+    "float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}" +
+    "vec3 sp(vec2 uv){vec2 o=uBl/uRes;vec3 c=texture2D(tD,uv).rgb*0.2;c+=texture2D(tD,uv+vec2(o.x,0.0)).rgb*0.1;c+=texture2D(tD,uv-vec2(o.x,0.0)).rgb*0.1;c+=texture2D(tD,uv+vec2(0.0,o.y)).rgb*0.1;c+=texture2D(tD,uv-vec2(0.0,o.y)).rgb*0.1;" +
+    "c+=texture2D(tD,uv+o*0.7).rgb*0.1;c+=texture2D(tD,uv-o*0.7).rgb*0.1;c+=texture2D(tD,uv+vec2(o.x,-o.y)*0.7).rgb*0.1;c+=texture2D(tD,uv+vec2(-o.x,o.y)*0.7).rgb*0.1;return c;}" +
+    "void main(){vec2 uv=vUv;float fr=floor(uT*24.0);" +
+    "float bd=step(0.982-uTear*0.4,h(vec2(floor(uv.y*48.0),fr)));uv.x+=bd*(h(vec2(fr,uv.y))-0.5)*(0.025+uTear*0.2);" +
+    "uv.x+=sin(uv.y*30.0+uT*2.0)*0.0009;float hs=smoothstep(0.03,0.0,uv.y);uv.x+=hs*(h(vec2(fr,floor(uv.y*300.0)))-0.5)*0.05;" +
+    "vec2 d=uv-0.5;float ab=uAb*(0.5+dot(d,d)*3.0);vec3 c=vec3(sp(uv+d*ab+vec2(0.0015,0.0)).r,sp(uv).g,sp(uv-d*ab-vec2(0.0015,0.0)).b)*uExp;" +
+    "c=(c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14);c=pow(clamp(c,0.0,1.0),vec3(1.0/2.2));" +
+    "c=mix(c,vec3(dot(c,vec3(0.3,0.59,0.11))),0.28)*vec3(1.0,1.03,0.94);" +
+    "float ln=step(0.995,h(vec2(floor(uv.y*260.0),fr)));c+=ln*0.2;c+=step(0.9985,h(vec2(floor(uv.y*90.0),fr*1.7)))*vec3(0.5);c+=hs*0.3*h(uv*uRes+fr);" +
+    "c*=0.9+0.1*sin(uv.y*uRes.y*1.6);c+=(h(uv*uRes+fract(uT*7.0)*91.0)-0.5)*uGr;" +
+    "c*=smoothstep(0.95,0.28,length(d*vec2(1.0,0.9)));c=mix(c,vec3(c.r*1.5+0.05,c.g*0.25,c.b*0.3),uRed);c*=uK;gl_FragColor=vec4(c,1.0);}";
+  var DISC_FS = "varying vec2 vUv;uniform float uT,uI,uA,uSil;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}" +
+    "float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}" +
+    "void main(){vec2 p=vUv-0.5;float r=length(p)*2.0;if(r>1.0)discard;float a=atan(p.y,p.x);float s=a*3.0/6.2832+r*2.2-uT*0.35;" +
+    "float v=n(vec2(s*6.0,r*5.0-uT*0.6))*0.6+n(vec2(s*13.0,r*9.0))*0.4;" +
+    "vec3 c=mix(vec3(0.16,0.0,0.03),vec3(1.0,0.2,0.1),v*v)*(0.25+0.55*v);c+=vec3(0.6,0.05,0.06)*smoothstep(0.7,1.0,r);" +
+    "c+=vec3(1.0,0.8,0.7)*smoothstep(0.75,0.0,r)*max(0.0,uI-1.0)*0.9;c*=min(uI,1.6);" +
+    "vec2 q=p*2.9-vec2(0.08,-0.12);float hd=length((q-vec2(0.0,0.2))/vec2(0.075,0.1));" +
+    "float w=q.y>-0.5?0.12-max(0.0,q.y-0.02)*1.6:0.075;float lg=q.y<-0.5?step(0.018,abs(q.x)):1.0;" +
+    "float bo=smoothstep(0.012,-0.012,abs(q.x)-w)*step(-0.98,q.y)*step(q.y,0.1)*lg;" +
+    "float sil=max(smoothstep(1.08,0.9,hd),bo);c=mix(c,vec3(0.0),sil*uSil*0.94);" +
+    "gl_FragColor=vec4(c,uA*smoothstep(1.0,0.96,r));}";
+  function tape3d(T, host, k) {
+    var R = new T.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    var DPR = Math.min(1.5, window.devicePixelRatio || 1);
+    R.setPixelRatio(DPR); R.shadowMap.enabled = true; R.shadowMap.type = T.PCFSoftShadowMap; R.localClippingEnabled = true;
+    host.appendChild(R.domElement);
+    var scene = new T.Scene(); scene.background = new T.Color(0x020203); scene.fog = new T.FogExp2(0x07080b, 0.065);
+    var cam = new T.PerspectiveCamera(52, 1, 0.03, 60);
+    var RT = new T.WebGLRenderTarget(4, 4, { type: T.HalfFloatType });
+    var dispose = [], i;
+    function canvasTex(w, h, fn, rep) {
+      var c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h);
+      var t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; if (rep) t.repeat.set(rep[0], rep[1]); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; dispose.push(t); return t;
+    }
+    var concrete = function (x, w, h) {
+      x.fillStyle = "#6d6a66"; x.fillRect(0, 0, w, h);
+      for (var i = 0; i < 9000; i++) { var v = 70 + Math.random() * 60 | 0; x.fillStyle = "rgba(" + v + "," + v + "," + (v - 4) + "," + (0.1 + Math.random() * 0.25) + ")"; x.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); }
+      for (i = 0; i < 40; i++) { x.fillStyle = "rgba(20,18,16," + Math.random() * 0.25 + ")"; x.beginPath(); x.ellipse(Math.random() * w, Math.random() * h, 8 + Math.random() * 50, 4 + Math.random() * 30, Math.random() * 3, 0, 7); x.fill(); }
+      x.strokeStyle = "rgba(30,28,26,.6)"; x.lineWidth = 2; for (i = 0; i < 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4 + 1); x.lineTo(w, i * h / 4 + 1); x.stroke(); }
+    };
+    var M = function (o) { var m = new T.MeshStandardMaterial(o); dispose.push(m); return m; };
+    var add = function (geo, mat, pos, rot, sh) { var m = new T.Mesh(geo, mat); if (pos) m.position.set(pos[0], pos[1], pos[2]); if (rot) m.rotation.set(rot[0], rot[1], rot[2]); m.castShadow = sh !== 0; m.receiveShadow = true; dispose.push(geo); return m; };
+    var wallM = M({ map: canvasTex(256, 256, concrete, [4, 2]), roughness: 0.95 });
+    var floorM = M({ map: canvasTex(256, 256, concrete, [6, 6]), roughness: 0.62, metalness: 0.08, color: 0x8a8580 });
+    var room = add(new T.BoxGeometry(9, 4.2, 8.5), wallM, [-0.5, 2.1, -1.4], null, 0); room.material = [wallM, wallM, wallM, floorM, wallM, wallM]; room.geometry.scale(-1, 1, 1); scene.add(room);
+    var metal = M({ color: 0x1d1f21, roughness: 0.55, metalness: 0.6 }), cabM = M({ color: 0x0b0b0b, roughness: 0.6 }), pipeM = M({ color: 0x2a2724, roughness: 0.5, metalness: 0.7 });
+    for (i = 0; i < 3; i++) scene.add(add(new T.CylinderGeometry(0.07 + i * 0.02, 0.07 + i * 0.02, 9, 10), pipeM, [-2 + i * 0.35, 3.9 - i * 0.1, -1], [0, 0, Math.PI / 2]));
+    var cable = function (pts, r) { var c = new T.CatmullRomCurve3(pts.map(function (p) { return new T.Vector3(p[0], p[1], p[2]); })); scene.add(add(new T.TubeGeometry(c, 48, r, 6), cabM)); };
+    // a cold night window high on the left wall, and the moonlight through it
+    var winM = new T.MeshBasicMaterial({ color: 0x3a4a66 }); dispose.push(winM);
+    scene.add(add(new T.PlaneGeometry(1.6, 0.5), winM, [-4.97, 3.4, -1.6], [0, Math.PI / 2, 0], 0));
+    for (i = 0; i < 4; i++) scene.add(add(new T.BoxGeometry(0.04, 0.5, 0.04), metal, [-4.95, 3.4, -2.2 + i * 0.4], null, 0));
+    var moon = new T.DirectionalLight(0x8094c0, 0.5); moon.position.set(-6, 5.5, -0.6); moon.target.position.set(0.5, 0, -2.6);
+    moon.castShadow = true; moon.shadow.mapSize.set(1024, 1024); var sc0 = moon.shadow.camera; sc0.left = -6; sc0.right = 6; sc0.top = 6; sc0.bottom = -6; sc0.far = 20;
+    scene.add(moon); scene.add(moon.target);
+    var hemi = new T.HemisphereLight(0x1c2232, 0x050403, 0.32); scene.add(hemi);
+    // dust
+    var DN = 900, dpos = new Float32Array(DN * 3);
+    for (i = 0; i < DN; i++) { dpos[i * 3] = -4 + Math.random() * 7.5; dpos[i * 3 + 1] = Math.random() * 3.6; dpos[i * 3 + 2] = -5.2 + Math.random() * 7.5; }
+    var dg = new T.BufferGeometry(); dg.setAttribute("position", new T.BufferAttribute(dpos, 3)); dispose.push(dg);
+    var dm = new T.PointsMaterial({ color: 0xffe9c0, size: 0.007, transparent: true, opacity: 0.35, depthWrite: false, blending: T.AdditiveBlending }); dispose.push(dm);
+    scene.add(new T.Points(dg, dm));
+    // a hanging lamp
+    var bulbs = [];
+    function lamp(px, py, pz, tx, ty, tz, I, shadow) {
+      var g = new T.Group(); g.position.set(px, py, pz); scene.add(g);
+      g.add(add(new T.CylinderGeometry(0.008, 0.008, 1.2, 4), cabM, [0, 0.62, 0]));
+      g.add(add(new T.ConeGeometry(0.26, 0.24, 20, 1, true), M({ color: 0x2b2d2a, roughness: 0.6, metalness: 0.6, side: T.DoubleSide }), [0, -0.05, 0]));
+      var bm = new T.MeshBasicMaterial({ color: 0xfff1c8 }); dispose.push(bm);
+      g.add(add(new T.SphereGeometry(0.035, 12, 8), bm, [0, -0.1, 0], null, 0));
+      var s = new T.SpotLight(0xffe2b0, I, 10, 0.72, 0.65, 1.6); s.position.set(px, py - 0.14, pz); s.target.position.set(tx, ty, tz);
+      if (shadow) { s.castShadow = true; s.shadow.mapSize.set(1024, 1024); s.shadow.bias = -0.0008; }
+      scene.add(s); scene.add(s.target);
+      var L = { g: g, s: s, b: bm, I: I, f: 1, dead: false }; bulbs.push(L); return L;
+    }
+    function flickAll(p) { bulbs.forEach(function (L) { if (L.dead) { L.s.intensity = 0; L.b.color.setScalar(0.05); return; } if (!RM && Math.random() < p) L.f = Math.random() < 0.35 ? 0.06 : 0.55 + Math.random() * 0.4; else L.f += (1 - L.f) * 0.2; L.s.intensity = L.I * L.f; L.b.color.setScalar(0.25 + 0.75 * L.f); }); }
+    // the faceless one (any material set: the coat, or the shadow)
+    var coatM = M({ color: 0xc9c7bf, roughness: 0.88 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32 }), darkM = M({ color: 0x141414, roughness: 0.8 }), shoeM = M({ color: 0x070707, roughness: 0.35, metalness: 0.2 });
+    function mkFig(cm, km, dm2, shm) {
+      var g = new T.Group(); scene.add(g);
+      var lathe = function (pts, mat) { var gg = new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), 28); gg.scale(1, 1, 0.72); return add(gg, mat); };
+      var legs = [-1, 1].map(function (sd) { var hip = new T.Group(); hip.position.set(sd * 0.1, 1.0, 0); g.add(hip);
+        hip.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), dm2, [0, -0.5, 0])); hip.add(add(new T.BoxGeometry(0.1, 0.06, 0.25), shm, [0, -0.97, 0.05])); return hip; });
+      var hem = lathe([[0.001, 0.42], [0.34, 0.42], [0.3, 0.7], [0.25, 1.02], [0.001, 1.06]], cm); g.add(hem);
+      var torso = new T.Group(); torso.position.y = 1.02; g.add(torso);
+      torso.add(lathe([[0.001, -0.05], [0.25, -0.04], [0.22, 0.3], [0.25, 0.68], [0.2, 0.78], [0.06, 0.82], [0.001, 0.82]], cm));
+      var neck = new T.Group(); neck.position.y = 0.8; torso.add(neck);
+      neck.add(add(new T.CylinderGeometry(0.04, 0.05, 0.26, 10), km, [0, 0.12, 0]));
+      var head = add(new T.SphereGeometry(1, 32, 24), km, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
+      var arms = [-1, 1].map(function (sd) {
+        var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
+        sh.add(add(new T.CapsuleGeometry(0.05, 0.42, 4, 10), cm, [0, -0.25, 0]));
+        var e2 = new T.Group(); e2.position.y = -0.5; sh.add(e2);
+        e2.add(add(new T.CapsuleGeometry(0.042, 0.4, 4, 10), cm, [0, -0.23, 0]));
+        var hand = new T.Group(); hand.position.y = -0.47; e2.add(hand);
+        hand.add(add(new T.BoxGeometry(0.06, 0.09, 0.025), km, [0, -0.04, 0]));
+        var f = []; for (var k = 0; k < 4; k++) { var fg = new T.Group(); fg.position.set(-0.024 + k * 0.016, -0.085, 0); fg.add(add(new T.CapsuleGeometry(0.006, 0.1 - Math.abs(k - 1.5) * 0.012, 2, 5), km, [0, -0.055, 0])); hand.add(fg); f.push(fg); }
+        return { sh: sh, el: e2, hand: hand, f: f, sd: sd };
+      });
+      return { g: g, legs: legs, torso: torso, neck: neck, head: head, arms: arms };
+    }
+    function restless(F, t, amp, k0) {        // the hands never quite still
+      F.arms.forEach(function (a, k) { a.f.forEach(function (fg, j) { fg.rotation.x = 0.4 + Math.sin(t * 9 + j * 1.3 + k + (k0 || 0)) * 0.5 * amp; }); });
+    }
+    function console3(px, pz, ry) {
+      var g = new T.Group(); g.position.set(px, 0, pz); g.rotation.y = ry || 0; scene.add(g);
+      g.add(add(new T.BoxGeometry(1.8, 0.95, 0.8), metal, [0, 0.475, 0]));
+      g.add(add(new T.BoxGeometry(1.8, 0.06, 0.55), M({ color: 0x111214, roughness: 0.4, metalness: 0.5 }), [0, 0.97, 0.2], [0.25, 0, 0]));
+      var c = document.createElement("canvas"); c.width = 128; c.height = 96; var sx = c.getContext("2d"), tex = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace; dispose.push(tex);
+      var sm = new T.MeshBasicMaterial({ map: tex, color: 0x9ad8c4 }); dispose.push(sm);
+      [[-0.55, 0.25], [0.05, 0], [0.62, -0.25]].forEach(function (p) {
+        var m = new T.Group(); m.position.set(p[0], 1.42, -0.22); m.rotation.y = p[1]; g.add(m);
+        m.add(add(new T.BoxGeometry(0.56, 0.44, 0.3), metal, [0, 0, -0.16])); var s = add(new T.PlaneGeometry(0.5, 0.37), sm, [0, 0, 0.001], null, 0); s.castShadow = false; m.add(s);
+      });
+      var light = new T.PointLight(0x5fe0c0, 1.8, 3, 2); light.position.set(px, 1.4, pz + 0.35); scene.add(light);
+      return { tex: tex, mat: sm, light: light, paint: function (t, red) {
+        sx.fillStyle = "#020806"; sx.fillRect(0, 0, 128, 96);
+        for (var y = 0; y < 12; y++) { sx.fillStyle = y === (t * 3 | 0) % 12 ? "#d0fff0" : red ? "#bf3f3f" : "#3fbf9a"; var len = 20 + ((Math.sin(y * 7.1 + (t * 2 | 0)) + 1) * 45 | 0); for (var x0 = 4; x0 < len; x0 += 6) if (Math.sin(x0 * 3.3 + y + (t | 0)) > -0.4) sx.fillRect(x0, 4 + y * 7, 4, 4); }
+        sx.strokeStyle = "#ff3a4a"; sx.beginPath(); for (var x1 = 0; x1 < 128; x1++) { var yy = 82 - Math.abs(Math.sin(x1 * 0.2 + t * 6)) * 8 * (x1 % 30 < 6 ? 1.6 : 0.3); if (x1) sx.lineTo(x1, yy); else sx.moveTo(x1, yy); } sx.stroke();
+        tex.needsUpdate = true;
+      } };
+    }
+    // the ring (tapes 2–6): arc < 2π while it is still being built
+    var PZ = -3.8, PC = new T.Vector3(-0.5, 2.0, PZ), PRAD = 1.75, portal = null;
+    function ring3(arc, open) {
+      var g = new T.Group(); g.position.copy(PC); scene.add(g);
+      var rm = new T.MeshStandardMaterial({ color: 0x2c2a27, emissive: 0xd8200f, emissiveIntensity: 0, roughness: 0.42, metalness: 0.78 }); dispose.push(rm);
+      var ring = add(new T.TorusGeometry(PRAD, 0.13, 20, 140, arc), rm); if (arc < 6.28) ring.rotation.z = -0.5; g.add(ring);
+      for (var k = 0; k < 28; k++) { var a = -0.5 + k / 28 * 6.283; if (a - -0.5 > arc) continue; var b = add(new T.BoxGeometry(0.1, 0.34, 0.34), metal, [Math.cos(a) * PRAD, Math.sin(a) * PRAD, 0], [0, 0, a]); g.add(b); }
+      [-1, 1].forEach(function (sd) { g.add(add(new T.BoxGeometry(0.18, 1.2, 0.5), metal, [sd * 1.0, -1.45, 0], [0, 0, sd * 0.35])); });
+      cable([[PC.x + 1.3, 0.02, PZ + 0.3], [0.8, 0.02, -2.4], [1.8, 0.03, -1.6], [3.2, 0.02, -2.2]], 0.035);
+      cable([[PC.x - 1.2, 0.02, PZ + 0.2], [-2.2, 0.02, -2.4], [-1.4, 0.03, -1.0], [-3.6, 0.02, -0.4]], 0.03);
+      cable([[PC.x + 0.4, 0.3, PZ + 0.1], [0.4, 0.02, -2.9], [1.2, 0.02, -0.4], [2.8, 0.02, 0.6]], 0.025);
+      var P = { g: g, ring: ring, m: rm, disc: null, heart: null };
+      if (open) {
+        var dmat = new T.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uT: { value: 0 }, uI: { value: 0 }, uA: { value: 0 }, uSil: { value: 0 } },
+          vertexShader: "varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}", fragmentShader: DISC_FS });
+        dispose.push(dmat); P.dm = dmat;
+        P.disc = add(new T.PlaneGeometry(PRAD * 2 - 0.1, PRAD * 2 - 0.1), dmat, [0, 0, 0], null, 0); P.disc.castShadow = false; P.disc.receiveShadow = false; g.add(P.disc);
+        var ht = new T.TextureLoader().load("/site/img/heart.png"); ht.colorSpace = T.SRGBColorSpace; dispose.push(ht);
+        var hm = new T.MeshBasicMaterial({ map: ht, transparent: true, color: 0xffd0d0, depthWrite: false, opacity: 0 }); dispose.push(hm); P.hm = hm;
+        P.heart = add(new T.PlaneGeometry(0.62, 0.56), hm, [0, 0, 0.04], null, 0); P.heart.castShadow = false; g.add(P.heart);
+        P.pl = new T.PointLight(0xff2a1a, 0, 12, 1.5); P.pl.position.set(PC.x, PC.y, PZ + 0.8); scene.add(P.pl);
+      }
+      return P;
+    }
+    var beat = function (t) { var p = (t % 0.86) / 0.86; return Math.exp(-Math.pow((p - 0.05) / 0.05, 2)) * 0.16 + Math.exp(-Math.pow((p - 0.24) / 0.05, 2)) * 0.09; };
+    // post
+    var post = new T.ShaderMaterial({ uniforms: { tD: { value: RT.texture }, uT: { value: 0 }, uAb: { value: 0.006 }, uGr: { value: 0.12 }, uBl: { value: 0 }, uTear: { value: 0 }, uRed: { value: 0 }, uExp: { value: 1.15 }, uK: { value: 1 }, uRes: { value: new T.Vector2(4, 4) } },
+      vertexShader: "varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}", fragmentShader: TAPE_FS, depthTest: false, depthWrite: false });
+    dispose.push(post);
+    var pScene = new T.Scene(), pCam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), pq = new T.Mesh(new T.PlaneGeometry(2, 2), post); pScene.add(pq); dispose.push(pq.geometry);
+    var V = new T.Vector3(), V2 = new T.Vector3(), LK = new T.Vector3();
+    function shoot(pos, look, fov, roll, amt, t) {      // handheld camera: breathing, micro-jitter, a little roll
+      var h = RM ? 0 : amt, sx = Math.sin(t * 0.9) * 0.02 * h + (Math.random() - 0.5) * 0.005 * h, sy = Math.sin(t * 1.3) * 0.015 * h + (Math.random() - 0.5) * 0.004 * h;
+      cam.position.set(pos.x + sx, pos.y + sy, pos.z); LK.copy(look); LK.x += sx * 5; LK.y += sy * 5;
+      cam.fov = fov; cam.updateProjectionMatrix(); cam.lookAt(LK); cam.rotateZ((roll || 0) + Math.sin(t * 0.7) * 0.012 * h);
+    }
+    var lerpV = function (a, b, k) { return new T.Vector3(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k); };
+    var P3 = function (a) { return new T.Vector3(a[0], a[1], a[2]); };
+    var D = {}, fig = null, u = post.uniforms;
+
+    // ======== №1 «Чертежи»: the board, the measuring, the note
+    if (k === "plans") {
+      scene.fog.density = 0.05;
+      var boardT = canvasTex(1024, 512, function (x, w, h) {
+        x.fillStyle = "#1a221e"; x.fillRect(0, 0, w, h);
+        for (var k = 0; k < 60; k++) { x.fillStyle = "rgba(210,220,210," + Math.random() * 0.05 + ")"; x.beginPath(); x.ellipse(Math.random() * w, Math.random() * h, 30 + Math.random() * 120, 10 + Math.random() * 40, Math.random() * 3, 0, 7); x.fill(); }
+        x.strokeStyle = "rgba(235,236,228,.85)"; x.lineCap = "round";
+        var circ = function (cx, cy, r, lw) { x.lineWidth = lw; x.beginPath(); for (var a = 0; a <= 6.3; a += 0.05) { var rr = r + (Math.random() - 0.5) * 1.6; if (a) x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); else x.moveTo(cx + rr, cy); } x.stroke(); };
+        circ(300, 250, 175, 4); circ(300, 250, 150, 3); circ(300, 250, 38, 2);
+        x.lineWidth = 2; for (k = 0; k < 24; k++) { var a = k / 24 * 6.283; x.beginPath(); x.moveTo(300 + Math.cos(a) * 150, 250 + Math.sin(a) * 150); x.lineTo(300 + Math.cos(a) * (k % 2 ? 175 : 196), 250 + Math.sin(a) * (k % 2 ? 175 : 196)); x.stroke(); }
+        x.setLineDash([10, 8]); x.beginPath(); x.moveTo(90, 250); x.lineTo(510, 250); x.moveTo(300, 40); x.lineTo(300, 460); x.stroke(); x.setLineDash([]);
+        x.fillStyle = "rgba(230,60,60,.8)"; x.beginPath(); x.moveTo(300, 262); x.bezierCurveTo(270, 240, 280, 222, 300, 236); x.bezierCurveTo(320, 222, 330, 240, 300, 262); x.fill();   // a small heart in the centre
+        x.strokeStyle = "rgba(235,236,228,.8)"; x.beginPath(); x.ellipse(760, 170, 150, 34, 0, 0, 7); x.stroke(); x.beginPath(); x.moveTo(660, 196); x.lineTo(640, 300); x.moveTo(860, 196); x.lineTo(880, 300); x.moveTo(600, 300); x.lineTo(920, 300); x.stroke();
+        x.beginPath(); x.moveTo(610, 120); x.lineTo(910, 120); x.moveTo(610, 112); x.lineTo(610, 128); x.moveTo(910, 112); x.lineTo(910, 128); x.stroke();
+        glyphText(x, "R 1.75", 650, 86, 4, "rgba(235,236,228,.85)", 1.2);
+        glyphText(x, "NO GAP", 330, 300, 4, "rgba(235,236,228,.8)", 1.2);
+        glyphText(x, "IT BEATS", 120, 455, 4, "rgba(235,236,228,.75)", 1.2);
+        glyphText(x, "28 SEGMENTS", 600, 340, 4, "rgba(235,236,228,.8)", 1.2);
+        glyphText(x, "ZERO POINT ?", 600, 390, 4, "rgba(235,236,228,.7)", 1.2);
+        glyphText(x, "DO NOT LOOK THROUGH", 560, 450, 4, "rgba(235,236,228,.55)", 1.6);
+      });
+      var board = add(new T.PlaneGeometry(4.6, 2.3), M({ map: boardT, roughness: 0.92 }), [-0.5, 2.05, -5.6], null, 0); scene.add(board);
+      scene.add(add(new T.BoxGeometry(4.75, 0.08, 0.1), M({ color: 0x2a1e14, roughness: 0.8 }), [-0.5, 0.88, -5.57]));
+      scene.add(add(new T.BoxGeometry(4.75, 0.06, 0.06), M({ color: 0x2a1e14, roughness: 0.8 }), [-0.5, 3.21, -5.6]));
+      var bpT = canvasTex(512, 360, function (x, w, h) {
+        x.fillStyle = "#1c3d70"; x.fillRect(0, 0, w, h); x.strokeStyle = "rgba(255,255,255,.12)"; x.lineWidth = 1;
+        for (var k = 0; k < w; k += 16) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k, h); x.stroke(); } for (k = 0; k < h; k += 16) { x.beginPath(); x.moveTo(0, k); x.lineTo(w, k); x.stroke(); }
+        x.strokeStyle = "rgba(240,245,255,.9)"; x.lineWidth = 2; x.beginPath(); x.arc(200, 190, 120, 0, 7); x.stroke(); x.beginPath(); x.arc(200, 190, 104, 0, 7); x.stroke();
+        x.strokeRect(360, 90, 110, 200); x.beginPath(); x.moveTo(360, 190); x.lineTo(470, 190); x.stroke();
+        glyphText(x, "GATE - SHEET 4", 24, 20, 3, "rgba(240,245,255,.9)");
+        x.fillStyle = "rgba(120,20,20,.35)"; x.beginPath(); x.ellipse(430, 320, 50, 20, 0.3, 0, 7); x.fill();
+      });
+      scene.add(add(new T.PlaneGeometry(1.15, 0.8), M({ map: bpT, roughness: 0.85 }), [1.15, 2.35, -5.58], [0, 0, 0.03], 0));
+      scene.add(add(new T.PlaneGeometry(0.7, 0.5), M({ map: bpT, roughness: 0.85, color: 0xb0b8c8 }), [-2.45, 2.55, -5.585], [0, 0, -0.06], 0));
+      // the desk, the note, a desk lamp
+      scene.add(add(new T.BoxGeometry(1.6, 0.06, 0.8), M({ color: 0x2c2118, roughness: 0.7 }), [2.2, 0.82, -3.9]));
+      [[-0.72, -0.34], [0.72, -0.34], [-0.72, 0.34], [0.72, 0.34]].forEach(function (p) { scene.add(add(new T.BoxGeometry(0.05, 0.8, 0.05), metal, [2.2 + p[0], 0.4, -3.9 + p[1]])); });
+      var noteT = canvasTex(512, 360, function (x, w, h) {
+        x.fillStyle = "#d8cfb8"; x.fillRect(0, 0, w, h);
+        for (var k = 0; k < 1500; k++) { x.fillStyle = "rgba(90,70,40," + Math.random() * 0.08 + ")"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+        x.fillStyle = "rgba(120,80,40,.18)"; x.beginPath(); x.arc(400, 290, 48, 0, 7); x.fill();
+        ["IF IT OPENS,", "IT WILL KNOW", "MY NAME."].forEach(function (l, k) { glyphText(x, l, 34, 40 + k * 70, 7, "#191820", 0.8); });
+        x.strokeStyle = "#191820"; x.lineWidth = 3; x.beginPath(); x.arc(420, 120, 44, 0, 7); x.stroke();
+      });
+      D.note = add(new T.PlaneGeometry(0.34, 0.24), M({ map: noteT, roughness: 0.9 }), [2.0, 0.853, -3.85], [-Math.PI / 2, 0, 0.18], 0); scene.add(D.note);
+      for (i = 0; i < 4; i++) scene.add(add(new T.PlaneGeometry(0.3, 0.42), M({ color: 0xbdb5a2, roughness: 0.95 }), [2.45 + i * 0.07, 0.852 - i * 0.0005, -3.95 + i * 0.03], [-Math.PI / 2, 0, 0.4 + i * 0.3], 0));
+      var dl = new T.PointLight(0xffc27a, 1.6, 2.4, 1.8); dl.position.set(2.65, 1.22, -4.05); scene.add(dl);
+      scene.add(add(new T.ConeGeometry(0.12, 0.14, 16, 1, true), M({ color: 0x3a2e22, roughness: 0.6, side: T.DoubleSide }), [2.65, 1.3, -4.05]));
+      D.lamp = lamp(-0.6, 3.55, -4.1, -0.6, 1.6, -5.6, 20, true);
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(-1.25, 0, -4.95); fig.g.rotation.y = Math.PI + 0.12;
+      var ruler = add(new T.BoxGeometry(0.02, 0.7, 0.012), M({ color: 0x9a8a60, roughness: 0.6 }), [0, -0.12, 0.02], [0, 0, 1.2]); fig.arms[1].hand.add(ruler);
+      cable([[-4.5, 0.02, -5.4], [-3, 0.02, -4.4], [-1.8, 0.02, -4.2], [1.5, 0.02, -4.6]], 0.02);
+      D.frame = function (t) {
+        flickAll(0.03 + (t > 11.2 ? 0.4 : 0));
+        if (t > 11.3 && !RM) D.lamp.f = Math.min(D.lamp.f, 0.15);
+        var a = fig.arms[1], b = fig.arms[0], mv = Math.sin(t * 0.8);
+        a.sh.rotation.set(-2.05 + mv * 0.12 * (RM ? 0 : 1), 0, 0.25); a.el.rotation.x = -0.35; a.hand.rotation.z = 0.2;
+        b.sh.rotation.set(-0.15, 0, -0.1); b.el.rotation.x = -0.25; restless(fig, t, 0.6);
+        fig.torso.rotation.x = 0.05; fig.neck.rotation.x = -0.15;
+        fig.neck.rotation.y = RM ? 0 : sm01(5.0, 5.8, t) * 0.75 * (1 - sm01(6.6, 7.3, t));     // he half-turns toward the camera, then back
+        fig.g.position.x = -1.25 + Math.sin(t * 0.35) * 0.08;
+        var pan = sm01(0.3, 4.5, t), toDesk = sm01(7.0, 8.8, t), push = sm01(9.0, 11.5, t);
+        var pos = lerpV([1.3, 1.62, -1.3], [0.7, 1.62, -1.7], pan).clone().lerp(V.set(1.95, 1.48, -3.05), toDesk).lerp(V.set(2.02, 1.32, -3.3), push);
+        var look = lerpV([1.0, 2.05, -5.6], [-1.3, 1.95, -5.4], pan).clone().lerp(V.set(2.0, 0.86, -3.85), toDesk);
+        shoot(pos, look, 50 - sm01(4.5, 6.8, t) * 8 - toDesk * 4 - push * 6, 0, 1, t);
+        u.uBl.value = RM ? 0 : 3 * (1 - sm01(0, 1.6, t)) + 1.5 * Math.sin(Math.PI * sm01(2, 3.6, t)) + 4 * Math.sin(Math.PI * toDesk) + (t > 8.8 ? 2.6 * (1 - sm01(9.4, 10.3, t)) : 0);
+        u.uExp.value = 1.25;
+      };
+    }
+    // ======== №2 «Каркас»: the frame, the sparks
+    if (k === "frame") {
+      scene.fog.density = 0.075;
+      portal = ring3(6.283 * 0.86, false);
+      var W2 = new T.Vector3(PC.x + Math.cos(-0.5) * PRAD, PC.y + Math.sin(-0.5) * PRAD, PZ + 0.12);
+      [-2.9, 1.9].forEach(function (x0) { for (var k = 0; k < 2; k++) scene.add(add(new T.CylinderGeometry(0.03, 0.03, 4.1, 6), pipeM, [x0 + k * 0.7, 2.05, PZ + 0.4])); [0.9, 2.1, 3.3].forEach(function (y) { scene.add(add(new T.CylinderGeometry(0.025, 0.025, 0.7, 6), pipeM, [x0 + 0.35, y, PZ + 0.4], [0, 0, Math.PI / 2])); scene.add(add(new T.BoxGeometry(0.75, 0.03, 0.4), M({ color: 0x3a2a1a, roughness: 0.9 }), [x0 + 0.35, y, PZ + 0.4])); }); });
+      [[-3.4, -1.6], [-3.15, -1.4]].forEach(function (p) { scene.add(add(new T.CylinderGeometry(0.13, 0.13, 1.25, 14), M({ color: 0x4a1210, roughness: 0.5, metalness: 0.3 }), [p[0], 0.625, p[1]])); });
+      for (i = 0; i < 7; i++) cable([[-4 + Math.random() * 7, 0.02, -5 + Math.random() * 2], [-2 + Math.random() * 4, 0.02, -3 + Math.random() * 2], [-3 + Math.random() * 6, 0.02, -1 + Math.random() * 2.5], [-4 + Math.random() * 7, 0.02, 1.5]], 0.018 + Math.random() * 0.02);
+      for (i = 0; i < 3; i++) scene.add(add(new T.BoxGeometry(0.5, 0.06, 0.12), metal, [-1.6 + i * 1.3, 0.03, -2.3 + i * 0.4], [0, i, 0]));
+      var work = new T.SpotLight(0xffa860, 10, 10, 0.7, 0.8, 1.6); work.position.set(-2.8, 0.35, -1.4); work.target.position.set(PC.x, 1.6, PZ); work.castShadow = true; work.shadow.mapSize.set(1024, 1024); scene.add(work); scene.add(work.target);
+      scene.add(add(new T.BoxGeometry(0.3, 0.22, 0.2), metal, [-2.8, 0.25, -1.45], [0, 0.6, 0]));
+      var wl = new T.PointLight(0xbcd6ff, 0, 9, 1.4); wl.position.copy(W2).add(V.set(0.1, 0.05, 0.25)); wl.castShadow = true; wl.shadow.mapSize.set(512, 512); wl.shadow.bias = -0.002; scene.add(wl);
+      var hotM = new T.MeshBasicMaterial({ color: 0xffffff }); dispose.push(hotM); var hot = add(new T.SphereGeometry(0.025, 10, 8), hotM, null, null, 0); hot.position.copy(W2); scene.add(hot);
+      var glowM = new T.MeshBasicMaterial({ color: 0xff7a20, transparent: true, opacity: 0 }); dispose.push(glowM); var glow = add(new T.SphereGeometry(0.06, 10, 8), glowM, null, null, 0); glow.position.copy(W2); scene.add(glow);
+      var SN = 240, spos = new Float32Array(SN * 6), sv = [];
+      for (i = 0; i < SN; i++) { sv.push({ p: new T.Vector3(0, -9, 0), v: new T.Vector3(), l: 0 }); }
+      var sg = new T.BufferGeometry(); sg.setAttribute("position", new T.BufferAttribute(spos, 3)); dispose.push(sg);
+      var smat = new T.LineBasicMaterial({ color: 0xffc27a, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }); dispose.push(smat);
+      scene.add(new T.LineSegments(sg, smat));
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.62, 0, -3.18); fig.g.rotation.y = Math.atan2(W2.x - 1.62, W2.z + 3.18);
+      var last = 0, heat = 0;
+      D.frame = function (t) {
+        var dt = Math.min(0.05, Math.max(0, t - last)); last = t;
+        var on = weldOn(t), fl = on ? (RM ? 0.8 : 0.35 + Math.random() * 0.65) : 0;
+        heat = on ? 1 : Math.max(0, heat - dt * 0.6);
+        wl.intensity = fl * (RM ? 9 : 14); hot.visible = on; glowM.opacity = heat * 0.9; portal.m.emissiveIntensity = heat * 0.4;
+        if (on && !RM) for (var k = 0; k < 9; k++) { var s = sv[(Math.random() * SN) | 0]; s.p.copy(W2); s.v.set((Math.random() - 0.3) * 2.6, Math.random() * 2.2 - 0.3, Math.random() * 2.4); s.l = 0.6 + Math.random() * 0.9; }
+        for (k = 0; k < SN; k++) {
+          var q = sv[k];
+          if (q.l > 0) { q.l -= dt; q.v.y -= 9.8 * dt; q.p.addScaledVector(q.v, dt); if (q.p.y < 0.01) { q.p.y = 0.01; q.v.y *= -0.3; q.v.x *= 0.6; q.v.z *= 0.6; } }
+          var vis = q.l > 0 ? 1 : 0, j = k * 6;
+          spos[j] = q.p.x; spos[j + 1] = vis ? q.p.y : -9; spos[j + 2] = q.p.z;
+          spos[j + 3] = q.p.x - q.v.x * 0.025; spos[j + 4] = vis ? q.p.y - q.v.y * 0.025 : -9; spos[j + 5] = q.p.z - q.v.z * 0.025;
+        }
+        sg.attributes.position.needsUpdate = true;
+        fig.arms.forEach(function (a, k) { a.sh.rotation.set(-1.45 + k * 0.15, 0, a.sd * -0.2); a.el.rotation.x = -0.5 + (on && !RM ? (Math.random() - 0.5) * 0.04 : 0); });
+        restless(fig, t, 0.2); fig.torso.rotation.x = 0.18;
+        fig.neck.rotation.y = RM ? 0 : sm01(10.7, 11.7, t) * 0.9; fig.neck.rotation.x = -0.2 + sm01(10.7, 11.7, t) * 0.15;
+        var walk = sm01(0, 9, t), up = sm01(3.4, 5.2, t) * (1 - sm01(6.4, 8.2, t));
+        var pos = lerpV([2.6, 1.55, 2.0], [0.95, 1.56, -0.7], walk);
+        pos.y += RM ? 0 : Math.abs(Math.sin(t * 3.4)) * 0.025 * (1 - walk);
+        var look = V.copy(PC).lerp(W2, sm01(1, 3, t)).lerp(V2.set(PC.x - 0.3, PC.y + PRAD, PZ), up);
+        look = look.clone().lerp(W2, sm01(6.4, 8.2, t)); look.y += sm01(10.4, 11.8, t) * 0.4;
+        shoot(pos, look, 54 + up * 6 - sm01(8, 11, t) * 10, 0, 1, t);
+        u.uBl.value = RM ? 0 : (on ? 0.4 : 0) + 3 * Math.sin(Math.PI * sm01(3.4, 5.2, t)) * 0.5 + 2.5 * Math.sin(Math.PI * sm01(6.4, 8.2, t)) * 0.6;
+        u.uExp.value = 1.3; u.uAb.value = 0.007;
+      };
+    }
+    // ======== №3 «Первый запуск»
+    if (k === "start") {
+      scene.fog.density = 0.06;
+      portal = ring3(6.283, true);
+      var cons = console3(2.0, -3.05, -0.35);
+      D.L = [lamp(-2.4, 3.55, -1.8, -2.4, 0, -2.4, 9, false), lamp(0, 3.55, -2.2, 0.2, 0, -2.6, 14, true), lamp(2.3, 3.55, -1.8, 2.0, 0, -2.6, 9, false)];
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.75, 0, -2.25); fig.g.rotation.y = Math.PI - 0.35;
+      cable([[2.0, 0.02, -2.8], [0.8, 0.02, -2.6], [PC.x + 1.2, 0.05, PZ + 0.25]], 0.04);
+      D.frame = function (t) {
+        var lv = sm01(2, 7.2, t), dead = t > 7.8, fl = RM ? 1 : (Math.random() < lv * 0.5 ? 0.3 + Math.random() * 0.9 : 1);
+        if ((t * 30 | 0) % 3 === 0) cons.paint(t, lv > 0.6);
+        portal.m.emissiveIntensity = dead ? 0.12 + 0.05 * Math.sin(t * 2) : lv * 2.4 * fl;
+        portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = dead ? 0.15 : lv * 0.9 * fl; portal.dm.uniforms.uA.value = dead ? 0.15 : lv * 0.85;
+        portal.pl.intensity = dead ? 0.6 : lv * 10 * fl;
+        D.L.forEach(function (L, k) { var bt = 7.2 + k * 0.25; if (t > bt && !L.dead) { L.dead = true; } if (t > bt && t < bt + 0.06) { L.s.intensity = L.I * 5; L.b.color.setScalar(2); } });
+        flickAll(lv * 0.25); D.L.forEach(function (L, k) { var bt = 7.2 + k * 0.25; if (t > bt && t < bt + 0.06) { L.s.intensity = L.I * 5; L.b.color.setScalar(2); } });
+        cons.light.intensity = dead ? 0 : 1.8; cons.mat.color.setScalar(dead ? 0.02 : 1); moon.intensity = 0.45;
+        fig.arms.forEach(function (a, k) { a.sh.rotation.set(-0.85, 0, a.sd * 0.1); a.el.rotation.x = -0.75 + (RM ? 0 : Math.sin(t * (3 + k)) * 0.06 * (1 + lv * 2)); });
+        restless(fig, t, 0.6 + lv); fig.torso.rotation.x = 0.35; fig.neck.rotation.y = -0.6 * sm01(3.5, 4.5, t);   // he looks at the ring
+        var pos = V.set(0.1, 1.45, 2.7), look = V2.set(0.4, 1.45, -3.2), roll = 0;
+        if (t > 8.3) {          // the camera falls
+          var f = RM ? 1 : sm01(8.3, 8.9, t), hitK = t > 8.9 && !RM ? Math.max(0, 1 - (t - 8.9) * 4) : 0;
+          pos = V.set(0.1 + f * 0.3, 1.45 - f * 1.33 + (hitK ? (Math.random() - 0.5) * 0.06 * hitK : 0), 2.7 - f * 0.4);
+          look = V2.set(0.15 - f * 0.6, 1.55 - f * 1.25, -3.2); roll = f * 1.45;
+          u.uTear.value = hitK; u.uBl.value = RM ? 1.5 : 1.5 + hitK * 4;
+        } else { u.uTear.value = t > 7.15 && !RM ? 0.5 : 0; u.uBl.value = 0; }
+        shoot(pos, look, 58, roll, t > 8.3 ? 0.2 : 0.35, t);
+        u.uExp.value = 1.25; u.uAb.value = 0.006 + lv * 0.01; u.uK.value = t > 9.6 ? Math.max(0, 1 - (t - 9.6) / 0.8) : 1;
+      };
+    }
+    // ======== №4 «Тень»
+    if (k === "shadow") {
+      scene.fog.density = 0.07;
+      portal = ring3(6.283, true); console3(2.4, -3.0, -0.45);
+      D.l = lamp(0.6, 3.55, 1.2, 0.0, 0, -1.2, 5, true);
+      var shade = M({ color: 0x050505, roughness: 1 });
+      fig = mkFig(shade, shade, shade, shade); fig.g.scale.set(1, 1.12, 1); fig.g.visible = false; fig.g.position.set(0.95, 0, -2.05); fig.g.rotation.y = Math.atan2(-0.3 - 0.95, -0.9 + 2.05);
+      D.frame = function (t) {
+        var b = beat(t * 0.7);
+        portal.m.emissiveIntensity = 0.55 + b * 1.5; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = 0.6 + b; portal.dm.uniforms.uA.value = 0.96;
+        portal.dm.uniforms.uSil.value = t < 6.0 ? 1 : 0; portal.pl.intensity = 3 + b * 10; flickAll(0.02);
+        var appr = sm01(0, 3.0, t), look2 = sm01(6.5, 7.4, t) * (1 - sm01(7.4, 7.6, t)), whip = RM ? (t > 7.8 ? 1 : 0) : sm01(7.6, 7.8, t);
+        var pos = lerpV([0.5, 1.62, 2.3], [-0.3, 1.66, -0.9], appr); pos.y += RM ? 0 : Math.abs(Math.sin(t * 3.2)) * 0.03 * (1 - appr);
+        var look = V.copy(PC).add(V2.set(-1.6 * look2, -0.1, 0)).lerp(V2.set(0.95, 1.55, -2.05), whip);
+        var zoom = sm01(3.0, 5.4, t) * (1 - sm01(6.4, 7.4, t));
+        shoot(pos, look, 52 - zoom * 20 + whip * 4, 0, 1, t);
+        var hunt = t > 5.4 && t < 6.5 ? Math.sin(Math.PI * (t - 5.4) / 1.1) : 0;
+        u.uBl.value = RM ? hunt * 2 : 0.8 * zoom + hunt * 6 + (t < 1.2 ? 2.5 * (1 - t / 1.2) : 0);
+        u.uExp.value = 1.25 - hunt * 0.35; u.uAb.value = 0.007 + zoom * 0.004;
+        var sting = t >= 7.8 && t < 8.15; fig.g.visible = sting;
+        u.uTear.value = sting && !RM ? 1 : 0; u.uRed.value = sting ? 0.25 : 0.05; u.uGr.value = sting ? 0.25 : 0.12;
+        if (sting) { D.l.s.intensity = 0; portal.pl.intensity = 16; }
+      };
+    }
+    // ======== №5 «Приступ»
+    if (k === "fall") {
+      scene.fog.density = 0.06;
+      portal = ring3(6.283, true);
+      var c5 = console3(1.6, -2.65, 0);
+      D.l = lamp(1.4, 3.55, -1.4, 1.6, 0, -2.4, 12, true);
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.6, 0, -1.85); fig.g.rotation.y = Math.PI;
+      var tripod = new T.Group(); tripod.position.set(2.6, 0, -1.65); scene.add(tripod);
+      D.frame = function (t) {
+        var b = beat(t), shake = sm01(0.5, 4.0, t), fall = RM ? (t > 4.6 ? 1 : 0) : sm01(4.2, 5.0, t), floor = t > (RM ? 4.6 : 5.4);
+        if ((t * 30 | 0) % 3 === 0) c5.paint(t, true);
+        portal.m.emissiveIntensity = 0.9 + b * 3; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = 0.75 + b * 1.2; portal.dm.uniforms.uA.value = 1;
+        portal.hm.opacity = 0.9; portal.heart.scale.setScalar(1 + (RM ? 0 : b)); portal.pl.intensity = (4 + b * 40) * (floor ? 3 : 0.6);
+        var brown = !RM && shake > 0.3 && Math.random() < 0.08 * shake;
+        D.l.I = 12 * (brown ? 0.15 : 1); flickAll(0.02 + shake * 0.06);
+        if (floor) { D.l.s.intensity *= 0.35; c5.light.intensity = 0.5; }
+        var tr = RM ? 0 : shake * (1 - fall);
+        fig.arms.forEach(function (a, k) {
+          a.sh.rotation.set(-0.9 + (Math.random() - 0.5) * 0.1 * tr, 0, a.sd * 0.12 + (Math.random() - 0.5) * 0.08 * tr);
+          a.el.rotation.x = -0.72 + (Math.random() - 0.5) * 0.25 * tr; a.hand.rotation.z = (Math.random() - 0.5) * 0.5 * tr; a.hand.rotation.x = -0.3 + (Math.random() - 0.5) * 0.4 * tr;
+        });
+        restless(fig, t * (1 + shake * 3), 0.5 + shake * 1.5); fig.torso.rotation.x = 0.4 + fall * 0.5; fig.neck.rotation.z = (RM ? 0 : (Math.random() - 0.5) * 0.15 * tr);
+        fig.g.position.y = -fall * 1.3; fig.g.position.x = 1.6 + fall * 0.35; fig.g.rotation.z = -fall * 0.9; fig.g.visible = !floor;
+        var pos, look, roll, fov;
+        if (!floor) {
+          var tip = RM ? 0 : sm01(4.8, 5.4, t);
+          pos = lerpV([2.5, 1.32, -1.62], [2.4, 0.12, -0.6], tip); look = lerpV([1.62, 1.02, -2.2], [-0.5, 0.7, -3.8], tip); roll = tip * 1.5708; fov = 40 + tip * 16;
+        } else { pos = V.set(2.4, 0.12, -0.6); look = V2.set(-0.5, 0.7, -3.8); roll = 1.5708; fov = 56; }
+        var hitK = !RM && t > 5.4 ? Math.max(0, 1 - (t - 5.4) * 4) : 0;
+        shoot(pos, look, fov, roll, floor ? 0 : 0.5 + shake, t);
+        if (hitK) cam.position.y += (Math.random() - 0.5) * 0.04 * hitK;
+        u.uTear.value = hitK; u.uBl.value = RM ? 0 : (floor ? 0.9 : shake * 0.6) + hitK * 3; u.uExp.value = 1.25; u.uRed.value = floor ? 0.08 : 0;
+        u.uK.value = t > 10.2 ? Math.max(0, 1 - (t - 10.2) / 0.7) : 1;
+      };
+    }
+    // ======== №6 «Шаг»
+    if (k === "step") {
+      scene.fog.density = 0.085; scene.fog.color.set(0x1a0806);
+      portal = ring3(6.283, true);
+      var beam = new T.SpotLight(0xffd6c4, 40, 14, 0.9, 0.5, 1.2); beam.position.set(PC.x, 1.4, PZ - 0.3); beam.target.position.set(PC.x, 0, 3); beam.castShadow = true; beam.shadow.mapSize.set(1024, 1024); beam.shadow.bias = -0.0008; scene.add(beam); scene.add(beam.target);
+      var clip = [new T.Plane(new T.Vector3(0, 0, 1), -PZ)];
+      [coatM, skinM, darkM, shoeM].forEach(function (m) { m.clippingPlanes = clip; });
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.rotation.y = Math.PI;
+      moon.intensity = 0.2;
+      D.frame = function (t) {
+        var b = beat(t), z = 1.2 - Math.min(t, 9.6) * 0.53, ph = (1.2 - z) / 0.62 * Math.PI, walking = t < 9.6;
+        fig.g.position.set(PC.x + Math.sin(ph * 0.5) * 0.02, z < -3.3 ? Math.min(0.28, (-3.3 - z) * 0.9) : 0, z);
+        fig.legs[0].rotation.x = walking && !RM ? Math.sin(ph) * 0.42 : 0; fig.legs[1].rotation.x = walking && !RM ? -Math.sin(ph) * 0.42 : 0;
+        fig.arms.forEach(function (a, k) { a.sh.rotation.set((RM ? 0 : (k ? 1 : -1) * Math.sin(ph) * 0.18) - 0.05, 0, a.sd * -0.08); a.el.rotation.x = -0.15; });
+        restless(fig, t, 0.3); fig.torso.rotation.x = 0.08; fig.neck.rotation.x = -0.12;
+        var open = 1 + sm01(0, 9, t) * 0.8;
+        portal.m.emissiveIntensity = 2 + b * 3; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = t > 11 ? 1.0 + b : open + b * 0.5; portal.dm.uniforms.uA.value = 1;
+        portal.hm.opacity = t > 11 ? 1 : 0.35; portal.heart.scale.setScalar(1 + (RM ? 0 : b * 1.2));
+        portal.pl.intensity = 14 + b * 30 + sm01(5, 9.5, t) * 30; beam.intensity = 30 + sm01(4, 9.5, t) * 60;
+        var pos, look, fov = 58, roll = 0;
+        if (t < 11) {
+          var cz = Math.max(z + 1.6, PZ + 1.3) + (t > 9.3 ? -sm01(9.3, 10.8, t) * 0.6 : 0);
+          pos = V.set(PC.x + 0.12, 0.62 + (RM ? 0 : Math.abs(Math.sin(ph)) * 0.04), cz);
+          look = V2.set(PC.x, 0.75 + sm01(7.5, 9.5, t) * 1.0, cz - 2.6);
+          roll = RM ? 0 : sm01(9.3, 10.8, t) * (Math.random() - 0.5) * 0.25;
+        } else { pos = V.set(PC.x, PC.y, PZ + 1.35); look = V2.copy(PC); fov = 30; }
+        shoot(pos, look, fov, roll, t < 11 ? 0.8 : 0.3, t);
+        u.uExp.value = t < 11 ? 1.2 + sm01(6, 9.6, t) * 1.6 : 1.15;
+        u.uTear.value = RM ? 0 : (t < 11 ? sm01(9.2, 10.8, t) : 0.15); u.uAb.value = 0.007 + sm01(8, 10.8, t) * 0.04; u.uRed.value = sm01(9.4, 10.8, t) * 0.35;
+        u.uK.value = t > 10.8 && t < 11 ? 0 : 1; u.uBl.value = RM ? 0 : sm01(9.6, 10.8, t) * 3 + (t > 11 && t < 11.6 ? 3 * (1 - (t - 11) / 0.6) : 0);
+      };
+    }
+    // ======== №5 «Голоса»: the empty lab, their chairs, the radio
+    if (k === "voices") {
+      scene.fog.density = 0.07;
+      var fab = M({ color: 0x1c1d22, roughness: 0.9 }), wood = M({ color: 0x2c2118, roughness: 0.7 });
+      var chairs = [];
+      var chair = function (cx, cz, ry, coat) {
+        var g = new T.Group(); g.position.set(cx, 0, cz); g.rotation.y = ry; scene.add(g);
+        g.add(add(new T.BoxGeometry(0.48, 0.08, 0.46), fab, [0, 0.48, 0])); g.add(add(new T.BoxGeometry(0.44, 0.5, 0.06), fab, [0, 0.8, -0.22], [-0.08, 0, 0]));
+        g.add(add(new T.CylinderGeometry(0.03, 0.03, 0.42, 8), metal, [0, 0.24, 0]));
+        for (var s = 0; s < 5; s++) { var a = s / 5 * 6.283; g.add(add(new T.BoxGeometry(0.04, 0.03, 0.3), metal, [Math.sin(a) * 0.15, 0.04, Math.cos(a) * 0.15], [0, a, 0])); }
+        if (coat) { g.add(add(new T.BoxGeometry(0.5, 0.62, 0.07), coatM, [0, 0.74, -0.27], [-0.1, 0, 0])); g.add(add(new T.BoxGeometry(0.09, 0.5, 0.06), coatM, [-0.27, 0.62, -0.25], [0, 0, 0.12])); }
+        chairs.push(g); return g;
+      };
+      var desk = function (cx) {
+        scene.add(add(new T.BoxGeometry(1.4, 0.05, 0.7), wood, [cx, 0.76, -2.45]));
+        [[-0.65, -0.3], [0.65, -0.3], [-0.65, 0.3], [0.65, 0.3]].forEach(function (p) { scene.add(add(new T.BoxGeometry(0.05, 0.75, 0.05), metal, [cx + p[0], 0.375, -2.45 + p[1]])); });
+        scene.add(add(new T.BoxGeometry(0.46, 0.38, 0.36), metal, [cx - 0.25, 0.98, -2.6]));
+        for (var p2 = 0; p2 < 3; p2++) scene.add(add(new T.PlaneGeometry(0.21, 0.3), M({ color: 0xbdb5a2, roughness: 0.95 }), [cx + 0.2 + p2 * 0.05, 0.786, -2.35], [-Math.PI / 2, 0, p2 * 0.4], 0));
+      };
+      [-2.7, -0.9, 0.9].forEach(function (cx, i) { desk(cx); chair(cx, -1.7, Math.PI + (i - 1) * 0.3, true); });
+      var scr5 = document.createElement("canvas"); scr5.width = 64; scr5.height = 48; var s5 = scr5.getContext("2d"), st5 = new T.CanvasTexture(scr5); dispose.push(st5);
+      var sm5 = new T.MeshBasicMaterial({ map: st5, color: 0x8899aa }); dispose.push(sm5);
+      scene.add(add(new T.PlaneGeometry(0.38, 0.3), sm5, [-1.15, 0.98, -2.419], null, 0));
+      var crt = new T.PointLight(0x8fa8c8, 0.8, 2.2, 2); crt.position.set(-1.15, 1.0, -2.1); scene.add(crt);
+      // the radio
+      var radio = new T.Group(); radio.position.set(1.2, 0.79, -2.5); radio.rotation.y = -0.25; scene.add(radio);
+      radio.add(add(new T.BoxGeometry(0.46, 0.24, 0.17), M({ color: 0x3a2516, roughness: 0.55 }), [0, 0.12, 0]));
+      var dialM = new T.MeshBasicMaterial({ color: 0xffa548 }); dispose.push(dialM);
+      radio.add(add(new T.PlaneGeometry(0.16, 0.07), dialM, [0.1, 0.15, 0.086], null, 0));
+      radio.add(add(new T.PlaneGeometry(0.16, 0.14), M({ color: 0x0c0c0c, roughness: 1 }), [-0.11, 0.12, 0.086], null, 0));
+      radio.add(add(new T.CylinderGeometry(0.004, 0.004, 0.6, 4), metal, [0.18, 0.5, -0.05], [0, 0, -0.35]));
+      var rl = new T.PointLight(0xff9a40, 1.2, 1.8, 2); rl.position.set(1.25, 1.0, -2.25); scene.add(rl);
+      D.l = lamp(-0.9, 3.55, -1.3, -0.9, 0, -2.0, 13, true);
+      D.frame = function (t) {
+        flickAll(0.05);
+        if ((t * 20 | 0) % 2 === 0) { for (var y = 0; y < 48; y += 2) { var v = Math.random() * 120 | 0; s5.fillStyle = "rgb(" + v + "," + v + "," + (v + 10) + ")"; s5.fillRect(0, y, 64, 2); } st5.needsUpdate = true; }
+        crt.intensity = RM ? 0.7 : 0.5 + Math.random() * 0.4;
+        var talk = TAPES[4].subs.some(function (s) { return t > s[0] && t < s[1]; });
+        dialM.color.setRGB(1, 0.65, 0.28).multiplyScalar(talk && !RM ? 0.7 + Math.random() * 0.6 : 0.8); rl.intensity = talk ? 1.6 : 0.9;
+        chairs[1].rotation.y = Math.PI + (RM ? 0.25 : sm01(6.2, 8.2, t) * 0.45);       // the middle chair turns, slowly, by itself
+        var pan = sm01(0, 8, t), push = sm01(8.2, 10.8, t);
+        var pos = lerpV([-2.9, 1.5, 0.7], [0.6, 1.42, -0.5], pan).clone().lerp(V.set(1.05, 1.08, -1.78), push);
+        var look = lerpV([-2.7, 0.9, -2.2], [0.3, 0.85, -2.1], pan).clone().lerp(V2.set(1.2, 0.92, -2.5), push);
+        if (t > 6.0 && t < 7.8) look.lerp(V2.set(-0.9, 0.7, -1.7), Math.sin(Math.PI * (t - 6) / 1.8) * 0.8);   // the camera catches the chair moving
+        shoot(pos, look, 50 - push * 12, 0, 1, t);
+        u.uBl.value = RM ? 0 : 2 * (1 - sm01(0, 1.4, t)) + 2.5 * Math.sin(Math.PI * push) * 0.6; u.uExp.value = 1.3;
+      };
+    }
+    // ======== №7 «Семья»: the photograph with the faces burnt out, the child's drawing
+    if (k === "family") {
+      scene.fog.density = 0.05;
+      var desk7 = add(new T.BoxGeometry(1.8, 0.05, 0.9), M({ color: 0x2f2318, roughness: 0.6 }), [0, 0.76, -2.2]); scene.add(desk7);
+      var photoT = canvasTex(256, 320, function (x, w, h) {
+        var g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#8a7458"); g.addColorStop(1, "#4e3e2c"); x.fillStyle = g; x.fillRect(0, 0, w, h);
+        for (var i = 0; i < 3000; i++) { x.fillStyle = "rgba(30,20,10," + Math.random() * 0.12 + ")"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+        [[70, 120, 1], [170, 135, 0.92], [122, 210, 0.55]].forEach(function (p) {      // three people: two grown, one small
+          x.fillStyle = "#2e2318"; x.beginPath(); x.ellipse(p[0], p[1] + 105 * p[2], 34 * p[2], 80 * p[2], 0, 0, 7); x.fill();
+          x.fillStyle = "#c9b28c"; x.beginPath(); x.ellipse(p[0], p[1], 20 * p[2], 25 * p[2], 0, 0, 7); x.fill();
+          var b = x.createRadialGradient(p[0], p[1], 2, p[0], p[1], 32 * p[2]); b.addColorStop(0, "#000"); b.addColorStop(0.5, "#0a0503"); b.addColorStop(0.75, "#5a2a10"); b.addColorStop(1, "rgba(90,50,20,0)");
+          x.fillStyle = b; x.beginPath(); x.arc(p[0], p[1], 32 * p[2], 0, 7); x.fill();              // the faces: burnt through
+        });
+        x.strokeStyle = "#e8dcc4"; x.lineWidth = 10; x.strokeRect(5, 5, w - 10, h - 10);
+      });
+      var pf = new T.Group(); pf.position.set(-0.38, 0.785, -2.42); pf.rotation.set(-0.18, 0.35, 0); scene.add(pf);
+      pf.add(add(new T.BoxGeometry(0.24, 0.3, 0.02), M({ color: 0x1a120c, roughness: 0.5 }), [0, 0.15, 0]));
+      pf.add(add(new T.PlaneGeometry(0.2, 0.25), M({ map: photoT, roughness: 0.4 }), [0, 0.15, 0.011], null, 0));
+      var drawT = canvasTex(512, 360, function (x, w, h) {
+        x.fillStyle = "#e9e4d8"; x.fillRect(0, 0, w, h);
+        var crayon = function (col, lw, pts) { x.strokeStyle = col; x.lineWidth = lw; x.lineCap = "round"; for (var r = 0; r < 3; r++) { x.beginPath(); pts.forEach(function (p, i) { var px = p[0] + (Math.random() - 0.5) * 4, py = p[1] + (Math.random() - 0.5) * 4; if (i) x.lineTo(px, py); else x.moveTo(px, py); }); x.stroke(); } };
+        var ring = []; for (var a = 0; a <= 6.4; a += 0.2) ring.push([300 + Math.cos(a) * 110, 160 + Math.sin(a) * 120]); crayon("#55575f", 9, ring);
+        var heart = []; for (a = 0; a <= 6.3; a += 0.15) heart.push([300 + 16 * Math.pow(Math.sin(a), 3) * 2.6, 150 - (13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) * 2.6]); crayon("#c8102e", 12, heart);
+        x.fillStyle = "rgba(200,16,46,.55)"; x.beginPath(); heart.forEach(function (p, i) { if (i) x.lineTo(p[0], p[1]); else x.moveTo(p[0], p[1]); }); x.fill();
+        [[70, 1], [120, 0.85], [165, 0.6]].forEach(function (f) { var fx0 = f[0], s = f[1]; crayon("#2a4aa8", 5, [[fx0, 230 - 70 * s], [fx0, 320 - 30 * s]]); crayon("#2a4aa8", 5, [[fx0 - 18 * s, 330], [fx0, 320 - 30 * s], [fx0 + 18 * s, 330]]); crayon("#2a4aa8", 5, [[fx0 - 22 * s, 270 - 40 * s], [fx0 + 22 * s, 270 - 40 * s]]); x.strokeStyle = "#2a4aa8"; x.lineWidth = 4; x.beginPath(); x.arc(fx0, 215 - 70 * s, 14 * s, 0, 7); x.stroke(); });
+        crayon("#e0a020", 6, [[460, 40], [500, 40]]); x.fillStyle = "#e8b020"; x.beginPath(); x.arc(470, 60, 26, 0, 7); x.fill();
+      });
+      scene.add(add(new T.PlaneGeometry(0.34, 0.24), M({ map: drawT, roughness: 0.95 }), [0.28, 0.786, -2.1], [-Math.PI / 2, 0, -0.14], 0));
+      scene.add(add(new T.CylinderGeometry(0.045, 0.04, 0.1, 16), M({ color: 0x6a1a14, roughness: 0.4 }), [0.62, 0.835, -2.45]));
+      for (i = 0; i < 4; i++) scene.add(add(new T.PlaneGeometry(0.22, 0.12), M({ color: 0xd5ccb6, roughness: 0.9 }), [-0.1 + i * 0.05, 0.7865 + i * 0.0004, -1.98 - i * 0.02], [-Math.PI / 2, 0, 0.5 + i * 0.2], 0));
+      scene.add(add(new T.CylinderGeometry(0.006, 0.006, 0.15, 6), M({ color: 0x111111 }), [0.05, 0.792, -2.3], [Math.PI / 2, 0, 0.9]));
+      var dl7 = new T.PointLight(0xffc27a, 2.4, 2.8, 1.8); dl7.position.set(0.55, 1.25, -2.55); dl7.castShadow = true; dl7.shadow.mapSize.set(512, 512); scene.add(dl7);
+      scene.add(add(new T.ConeGeometry(0.13, 0.15, 16, 1, true), M({ color: 0x3a2e22, roughness: 0.6, side: T.DoubleSide }), [0.55, 1.33, -2.55]));
+      D.frame = function (t) {
+        dl7.intensity = 2.4 * (t > 9.8 && !RM ? (Math.random() < 0.3 ? 0.2 : 0.7) : 1) * (1 - sm01(10.2, 10.9, t) * 0.8);
+        var a = sm01(4.8, 7.0, t);
+        var pos = lerpV([-0.15, 1.18, -1.75], [0.32, 1.12, -1.68], a); var look = lerpV([-0.38, 0.93, -2.42], [0.28, 0.79, -2.1], a);
+        pos.x += Math.sin(t * 0.4) * 0.03;
+        shoot(pos, look, 42 - sm01(0.5, 4.5, t) * 8 - sm01(7, 10, t) * 6, 0, 0.9, t);
+        u.uBl.value = RM ? 0 : 3.5 * (1 - sm01(0.4, 1.8, t)) + 4 * Math.sin(Math.PI * a) + (t > 7 ? 1.5 * (1 - sm01(7.2, 8.2, t)) : 0); u.uExp.value = 1.3;
+      };
+    }
+    // ======== №8 «Сердце»: a red heart of light forming in a glass capsule; he stares at it
+    if (k === "heart") {
+      scene.fog.density = 0.07;
+      portal = ring3(6.283, true);
+      var CP = new T.Vector3(0.7, 0, -2.0);
+      scene.add(add(new T.CylinderGeometry(0.38, 0.42, 0.22, 28), metal, [CP.x, 0.11, CP.z]));
+      scene.add(add(new T.CylinderGeometry(0.34, 0.34, 0.06, 28), metal, [CP.x, 1.27, CP.z]));
+      var glass = new T.MeshStandardMaterial({ color: 0xa8c0d0, transparent: true, opacity: 0.16, roughness: 0.05, metalness: 0.2, depthWrite: false, side: T.DoubleSide }); dispose.push(glass);
+      var gl8 = add(new T.CylinderGeometry(0.3, 0.3, 1.02, 32, 1, true), glass, [CP.x, 0.73, CP.z], null, 0); gl8.castShadow = false; scene.add(gl8);
+      cable([[CP.x + 0.3, 0.05, CP.z], [1.5, 0.02, -2.6], [PC.x + 1.2, 0.04, PZ + 0.3]], 0.035);
+      var ht8 = new T.TextureLoader().load("/site/img/heart.png"); ht8.colorSpace = T.SRGBColorSpace; dispose.push(ht8);
+      var hm8 = new T.MeshBasicMaterial({ map: ht8, transparent: true, depthWrite: false, opacity: 0, color: 0xffb0b0 }); dispose.push(hm8);
+      var hp8 = add(new T.PlaneGeometry(0.3, 0.27), hm8, [CP.x, 0.74, CP.z], null, 0); hp8.castShadow = false; scene.add(hp8);
+      var PN = 260, ppos = new Float32Array(PN * 3), pseed = [];
+      for (i = 0; i < PN; i++) pseed.push([Math.random() * 6.283, 0.05 + Math.random() * 0.22, Math.random() * 0.9 - 0.45, 0.5 + Math.random()]);
+      var pg8 = new T.BufferGeometry(); pg8.setAttribute("position", new T.BufferAttribute(ppos, 3)); dispose.push(pg8);
+      var pm8 = new T.PointsMaterial({ color: 0xff3a30, size: 0.012, transparent: true, opacity: 0.9, depthWrite: false, blending: T.AdditiveBlending }); dispose.push(pm8);
+      scene.add(new T.Points(pg8, pm8));
+      var hl8 = new T.PointLight(0xff2a1a, 0, 5, 1.6); hl8.position.set(CP.x, 0.74, CP.z); scene.add(hl8);
+      D.l = lamp(-0.6, 3.55, -0.8, 0.2, 0, -1.8, 6, true);
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(0.3, 0, -2.75); fig.g.rotation.y = Math.atan2(CP.x - 0.3, CP.z + 2.75);
+      D.frame = function (t) {
+        var form = sm01(1, 7, t), bt = 0.86 - sm01(6, 11, t) * 0.3, p = (t % bt) / bt, b = Math.exp(-Math.pow((p - 0.05) / 0.05, 2)) * 0.16 + Math.exp(-Math.pow((p - 0.24) / 0.05, 2)) * 0.09;
+        portal.m.emissiveIntensity = 0.35 + b; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = 0.35; portal.dm.uniforms.uA.value = 0.9; portal.pl.intensity = 1.5;
+        flickAll(0.02); D.l.I = 6 * (1 - form * 0.5);
+        for (var q = 0; q < PN; q++) {
+          var s = pseed[q], a = s[0] + t * s[3] * 1.4, r = s[1] * (1 - form * 0.9), j = q * 3;
+          ppos[j] = CP.x + Math.cos(a) * r; ppos[j + 1] = 0.74 + s[2] * (1 - form * 0.9) + Math.sin(t * 2 + q) * 0.01; ppos[j + 2] = CP.z + Math.sin(a) * r;
+        }
+        pg8.attributes.position.needsUpdate = true; pm8.opacity = 0.9 * (1 - sm01(6.5, 8.5, t) * 0.7);
+        hm8.opacity = sm01(3, 7.5, t); hp8.scale.setScalar((0.6 + form * 0.4) * (1 + (RM ? 0 : b * 1.3))); hp8.lookAt(cam.position);
+        hl8.intensity = form * (2 + b * 25);
+        var reach = sm01(8.4, 10.2, t), arm = fig.arms[1];
+        arm.sh.rotation.set(-0.15 - reach * 1.25, 0, 0.05 - reach * 0.25); arm.el.rotation.x = -0.2 - reach * 0.2; fig.arms[0].sh.rotation.set(-0.1, 0, -0.05); fig.arms[0].el.rotation.x = -0.15;
+        restless(fig, t, 0.25 + reach * 0.6); fig.torso.rotation.x = 0.1; fig.neck.rotation.x = 0.15; fig.neck.rotation.z = RM ? 0 : Math.sin(t * 0.5) * 0.03;
+        var push = sm01(0, 11, t);
+        var pos = lerpV([2.0, 1.45, 0.6], [1.65, 1.32, -0.05], push);
+        shoot(pos, V2.set(0.55, 1.05, -2.3), 62 - push * 8, 0, 1, t);
+        u.uBl.value = RM ? 0 : 2.5 * (1 - sm01(0, 1.5, t)) + (t > 4.5 && t < 5.5 ? 2 * Math.sin(Math.PI * (t - 4.5)) : 0); u.uExp.value = 1.3; u.uRed.value = form * 0.06;
+        u.uK.value = t > 11.3 ? Math.max(0, 1 - (t - 11.3) / 0.6) : 1;
+      };
+    }
+    // ======== №10 «По ту сторону»: the camera lies in a crystal valley in the dark; a small light rolls away
+    if (k === "beyond") {
+      room.visible = false; moon.intensity = 0.06; hemi.intensity = 0.12; scene.background.set(0x010104); scene.fog.color.set(0x04040b); scene.fog.density = 0.075;
+      var rockT = canvasTex(256, 256, function (x, w, h) { x.fillStyle = "#17161c"; x.fillRect(0, 0, w, h); for (var i = 0; i < 6000; i++) { var v = 10 + Math.random() * 40 | 0; x.fillStyle = "rgba(" + v + "," + v + "," + (v + 8) + ",.5)"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }, [20, 20]);
+      var gnd = add(new T.PlaneGeometry(60, 60, 60, 60), M({ map: rockT, roughness: 0.85, metalness: 0.1 }), [0, 0, -20], [-Math.PI / 2, 0, 0], 0);
+      var gp = gnd.geometry.attributes.position; for (i = 0; i < gp.count; i++) { var gx = gp.getX(i), gy = gp.getY(i); gp.setZ(i, Math.max(0, Math.abs(gx) - 1.6) * 0.35 + Math.sin(gx * 1.3 + gy * 0.7) * 0.05); } gnd.geometry.computeVertexNormals(); scene.add(gnd);
+      var cryM = [M({ color: 0x2c2350, emissive: 0x5b3cff, emissiveIntensity: 0.55, roughness: 0.08, metalness: 0.3, flatShading: true }), M({ color: 0x1d3a4a, emissive: 0x2ad0ff, emissiveIntensity: 0.45, roughness: 0.08, metalness: 0.3, flatShading: true })];
+      var seedR = 7; var rr = function () { seedR = (seedR * 16807) % 2147483647; return (seedR - 1) / 2147483646; };
+      for (i = 0; i < 70; i++) {
+        var side = rr() < 0.5 ? -1 : 1, cz = 0.5 - rr() * 30, cx = side * (1.4 + rr() * 5 + Math.max(0, -cz) * 0.05), hgt = 0.4 + rr() * (1.6 + Math.abs(cx) * 0.4);
+        var cr = add(new T.OctahedronGeometry(1, 0), cryM[rr() < 0.65 ? 0 : 1], [cx, hgt * 0.45 + Math.max(0, Math.abs(cx) - 1.6) * 0.35, cz], [rr() * 0.5 - 0.25, rr() * 3, side * (0.15 + rr() * 0.35)]);
+        cr.scale.set(0.12 + rr() * 0.25, hgt, 0.12 + rr() * 0.25); scene.add(cr);
+      }
+      [[-2.5, 1.2, -4, 0x6a4cff], [2.8, 1.0, -9, 0x2ad0ff], [-3, 1.4, -15, 0x6a4cff]].forEach(function (p) { var l = new T.PointLight(p[3], 2.2, 7, 1.6); l.position.set(p[0], p[1], p[2]); scene.add(l); });
+      var orbM = new T.MeshBasicMaterial({ color: 0xffe6dc }); dispose.push(orbM);
+      var orb = add(new T.SphereGeometry(0.07, 16, 12), orbM, null, null, 0); scene.add(orb);
+      var halo = new T.Mesh(new T.SphereGeometry(0.16, 16, 12), new T.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, opacity: 0.1, blending: T.AdditiveBlending, depthWrite: false })); dispose.push(halo.geometry, halo.material); scene.add(halo);
+      var ol = new T.PointLight(0xffc8b8, 3, 5, 1.5); scene.add(ol);
+      D.frame = function (t) {
+        var roll = sm01(2, 11.5, t), oz = 0.2 - roll * 22, ox = Math.sin(roll * 9) * 0.35, oy = 0.07 + Math.abs(Math.sin(t * 5.5)) * 0.03 * (1 - roll);
+        orb.position.set(ox, oy, oz); halo.position.copy(orb.position); ol.position.set(ox, oy + 0.15, oz);
+        halo.scale.setScalar(1 + (RM ? 0 : Math.sin(t * 6) * 0.12)); ol.intensity = 3 + Math.sin(t * 6) * 0.6;
+        var hunt = t > 5 && t < 6.2 ? Math.sin(Math.PI * (t - 5) / 1.2) : 0;
+        shoot(V.set(0.15, 0.13, 1.6), V2.set(ox * 0.4, 0.35, -6), 50 - sm01(6, 10, t) * 10, 0.22, 0.15, t);
+        u.uTear.value = RM ? 0 : (t < 0.6 ? 1 - t / 0.6 : 0) + (t > 10.6 ? sm01(10.6, 11.6, t) : 0); u.uBl.value = RM ? 0 : 2.5 * (1 - sm01(0.3, 1.6, t)) + hunt * 3;
+        u.uExp.value = 1.45; u.uAb.value = 0.008; u.uK.value = t > 11.2 ? Math.max(0, 1 - (t - 11.2) / 0.7) : 1;
+      };
+    }
+    // ======== «почему»: a figure from behind in the dark, whispering; it turns, and comes
+    if (k === "why") {
+      scene.fog.density = 0.11; moon.intensity = 0.04; hemi.intensity = 0.08;
+      var rim = new T.SpotLight(0xc8d4ff, 30, 8, 0.55, 0.7, 1.3); rim.position.set(0.2, 3.6, -4.0); rim.target.position.set(0, 1.2, -2.4); rim.castShadow = true; rim.shadow.mapSize.set(1024, 1024); scene.add(rim); scene.add(rim.target);
+      var fill = new T.PointLight(0x8a6a5a, 0.7, 5, 2); fill.position.set(0, 1.6, 0.6); scene.add(fill);
+      fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.rotation.y = Math.PI;
+      D.frame = function (t) {
+        var turn = RM ? 0 : sm01(8.2, 9.0, t) * 0.9, snapped = t >= 9.0, lunge = RM ? (t > 9.1 ? 1 : 0) : sm01(9.1, 9.45, t);
+        fig.g.rotation.y = snapped ? 0 : Math.PI - turn; fig.g.rotation.z = RM ? 0 : Math.sin(t * 0.8) * 0.025 * (1 - lunge);
+        fig.g.position.set(0, 0, -2.4 + lunge * 2.05);
+        fig.arms.forEach(function (a) { a.sh.rotation.set(-0.05 - lunge * 1.5, 0, a.sd * 0.05); a.el.rotation.x = -0.1 - lunge * 0.3; });
+        restless(fig, t * (1 + lunge * 4), 0.4 + lunge); fig.torso.rotation.x = 0.06 + lunge * 0.3; fig.neck.rotation.z = RM ? 0 : Math.sin(t * 0.6) * 0.1 + (t > 2 && t < 8 && Math.sin(t * 1.7) > 0.96 ? 0.25 : 0);
+        fig.neck.rotation.x = -0.1 - lunge * 0.4;
+        shoot(V.set(0, 1.62, 1.2), V2.set(0, 1.5 + lunge * 0.3, -2.4 + lunge * 2), 46, 0, 0.6 + lunge * 2, t);
+        u.uTear.value = RM ? 0 : (lunge > 0 && lunge < 1 ? 0.5 : snapped ? 0.2 : 0); u.uRed.value = snapped ? 0.2 : 0; u.uExp.value = 1.25 + lunge * 0.4; u.uGr.value = 0.15 + lunge * 0.2; u.uAb.value = 0.007 + lunge * 0.04;
+        u.uBl.value = RM ? 0 : 1.5 * (1 - sm01(0, 1.5, t));
+      };
+    }
+    function size() {
+      var w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
+      R.setSize(w, h, false); R.domElement.style.width = w + "px"; R.domElement.style.height = h + "px";
+      RT.setSize(Math.round(w * DPR), Math.round(h * DPR)); u.uRes.value.set(w * DPR, h * DPR);
+      cam.aspect = w / h; cam.updateProjectionMatrix();
+    }
+    function frame(t) {
+      u.uT.value = t; u.uK.value = 1; u.uTear.value = 0; u.uRed.value = 0; u.uGr.value = 0.13; u.uAb.value = 0.006;
+      var pa = dg.attributes.position.array; if (!RM) { for (var k = 1; k < pa.length; k += 3) { pa[k] -= 0.0012; if (pa[k] < 0) pa[k] = 3.6; } dg.attributes.position.needsUpdate = true; }
+      D.frame(t);
+      R.setRenderTarget(RT); R.render(scene, cam); R.setRenderTarget(null); R.render(pScene, pCam);
+    }
+    return {
+      size: size, frame: frame,
+      dispose: function () { dispose.forEach(function (d) { try { d.dispose(); } catch (e) { /* gone */ } }); RT.dispose(); R.dispose(); try { R.forceContextLoss(); } catch (e) { /* gone */ } R.domElement.remove(); }
+    };
+  }
+  // ---- the tapes, flat (three.js could not load)
+  function tape2d(host, k) {
+    var c = document.createElement("canvas"); host.appendChild(c); var x = c.getContext("2d"), W = 0, H = 0;
+    function size() { W = c.width = Math.ceil(innerWidth / 2); H = c.height = Math.ceil(innerHeight / 2); c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; }
+    function fig(cx, base, s, col) {
+      x.fillStyle = col || "#cfcac0"; x.beginPath(); x.ellipse(cx, base - 205 * s, 13 * s, 20 * s, 0.1, 0, 7); x.fill();
+      x.fillStyle = col || "#bdb9b0"; x.beginPath(); x.moveTo(cx - 22 * s, base - 170 * s); x.lineTo(cx + 22 * s, base - 170 * s); x.lineTo(cx + 34 * s, base - 40 * s); x.lineTo(cx - 34 * s, base - 40 * s); x.fill();
+      x.fillStyle = col || "#111"; x.fillRect(cx - 12 * s, base - 40 * s, 8 * s, 40 * s); x.fillRect(cx + 4 * s, base - 40 * s, 8 * s, 40 * s);
+    }
+    function ring(cx, cy, r, glow, arc) {
+      x.lineWidth = Math.max(3, r * 0.12); x.strokeStyle = glow > 0.05 ? "rgba(" + (60 + Math.min(1, glow) * 195 | 0) + ",30,16,1)" : "#2a2826";
+      x.shadowColor = "rgba(255,40,20," + Math.min(1, glow) + ")"; x.shadowBlur = glow * 30; x.beginPath(); x.arc(cx, cy, r, -0.5, -0.5 + (arc || 6.3)); x.stroke(); x.shadowBlur = 0;
+    }
+    function heart(cx, cy, hh) { if (HOK) x.drawImage(HIMG, cx - hh * HIMG.width / HIMG.height / 2, cy - hh / 2, hh * HIMG.width / HIMG.height, hh); }
+    function frame(t) {
+      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#050505"; x.fillRect(0, 0, W, H);
+      var jx = RM ? 0 : Math.sin(t * 0.9) * 3, jy = RM ? 0 : Math.sin(t * 1.3) * 2, cx = W / 2 + jx, cy = H * 0.45 + jy, r = Math.min(W, H) * 0.32, b = Math.max(0, Math.sin((t % 0.86) / 0.86 * Math.PI * 4)) * 0.1, q;
+      x.fillStyle = "#0c0c0b"; x.fillRect(0, H * 0.72 + jy, W, H);
+      if (k === "plans") {
+        x.fillStyle = "#1a221e"; x.fillRect(W * 0.08 + jx - t * 6, H * 0.2, W * 0.9, H * 0.38); x.strokeStyle = "rgba(230,230,220,.7)"; x.lineWidth = 2;
+        x.beginPath(); x.arc(W * 0.35 + jx - t * 6, H * 0.39, H * 0.14, 0, 7); x.stroke();
+        glyphText(x, "NO GAP", W * 0.55 + jx - t * 6, H * 0.3, 2, "rgba(230,230,220,.7)"); fig(W * 0.4 + jx - t * 6, H * 0.78, H / 300);
+        if (t > 8) { x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.fillStyle = "#d8cfb8"; x.fillRect(W * 0.1, H * 0.3, W * 0.8, H * 0.35); ["IF IT OPENS,", "IT WILL KNOW", "MY NAME."].forEach(function (l, i) { glyphText(x, l, W * 0.15, H * 0.35 + i * H * 0.09, Math.max(1, W / 110 | 0), "#191820"); }); }
+      } else if (k === "voices") {
+        for (q = 0; q < 3; q++) { var chx = W * (0.2 + q * 0.3) - t * 4; x.fillStyle = "#16171b"; x.fillRect(chx - 20, H * 0.5, 40, 50); x.fillRect(chx - 22, H * 0.6, 44, 8); if (q !== 1) { x.fillStyle = "#8a8880"; x.fillRect(chx - 18, H * 0.5, 36, 40); } }
+        x.fillStyle = "rgba(255,165,72," + (0.6 + Math.random() * 0.3) + ")"; x.fillRect(W * 0.78, H * 0.62, 26, 9);
+      } else if (k === "family") {
+        x.fillStyle = "#2f2318"; x.fillRect(0, H * 0.55, W, H); x.fillStyle = "#6e5a42"; x.fillRect(W * 0.18, H * 0.25, W * 0.3, H * 0.32);
+        [[0.26, 0.33], [0.4, 0.34], [0.33, 0.42]].forEach(function (p) { x.fillStyle = "#000"; x.beginPath(); x.arc(W * p[0], H * p[1], W * 0.035, 0, 7); x.fill(); });
+        x.fillStyle = "#e9e4d8"; x.fillRect(W * 0.55, H * 0.62, W * 0.35, H * 0.2); x.strokeStyle = "#55575f"; x.lineWidth = 3; x.beginPath(); x.arc(W * 0.72, H * 0.72, H * 0.07, 0, 7); x.stroke(); heart(W * 0.72, H * 0.72, H * 0.06);
+      } else if (k === "beyond") {
+        x.fillStyle = "#08070d"; x.fillRect(0, H * 0.55, W, H);
+        for (q = 0; q < 14; q++) { var sx = (q % 2 ? 0.08 : 0.68) * W + (q * 37 % 60), sh = 30 + q * 7 % 50; x.fillStyle = q % 3 ? "#3a2c7a" : "#1d4f64"; x.beginPath(); x.moveTo(sx, H * 0.62); x.lineTo(sx + 9, H * 0.62 - sh); x.lineTo(sx + 18, H * 0.62); x.fill(); }
+        var rk = Math.min(1, Math.max(0, (t - 2) / 9.5)), oz = 1 / (1 + rk * 12);
+        x.fillStyle = "#fff0ea"; x.shadowColor = "#ff5a4a"; x.shadowBlur = 16; x.beginPath(); x.arc(W / 2 + Math.sin(rk * 9) * 20 * oz, H * 0.56 + 60 * oz, 2 + 8 * oz, 0, 7); x.fill(); x.shadowBlur = 0;
+      } else if (k === "why") {
+        var ln = RM ? (t > 9.1 ? 1 : 0) : Math.min(1, Math.max(0, (t - 9.1) / 0.35));
+        fig(W / 2 + (RM ? 0 : Math.sin(t * 0.8) * 2), H * (0.9 + ln * 0.9), H / (330 - ln * 260), "#2a2a30");
+      } else {
+        var lv = k === "start" ? Math.min(1, Math.max(0, (t - 2) / 5.2)) : k === "frame" ? 0 : k === "shadow" || k === "heart" ? 0.5 : 0.9;
+        if (k === "start" && t > 7.8) lv = 0.08;
+        ring(cx, cy, r, lv + (k === "fall" || k === "step" ? b * 3 : 0), k === "frame" ? 5.4 : 6.3);
+        if (k !== "frame" && lv > 0.1) { var g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, k === "step" ? "rgba(255,230,210," + Math.min(1, t / 9) + ")" : "rgba(160,20,10,.5)"); g.addColorStop(1, "rgba(80,0,10,.6)"); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r * 0.93, 0, 7); x.fill(); }
+        if (k === "shadow" && t < 6) fig(cx, cy + r * 0.6, r / 400, "#000");
+        if (k === "shadow" && t >= 7.8 && t < 8.15) fig(W * 0.75, H * 0.95, H / 230, "#060606");
+        if (k === "frame" && weldOn(t)) { x.fillStyle = "rgba(190,215,255,.9)"; x.beginPath(); x.arc(cx + r * 0.88, cy + r * 0.48, 4 + Math.random() * 4, 0, 7); x.fill(); for (q = 0; q < 20; q++) { x.fillStyle = "#ffc27a"; x.fillRect(cx + r * 0.88 + (Math.random() - 0.3) * 60, cy + r * 0.48 + Math.random() * 60, 2, 2); } }
+        if (k === "frame" || k === "start" || k === "heart") fig(cx + r * 1.1, H * 0.78, H / 300);
+        if (k === "heart") { x.strokeStyle = "rgba(170,200,220,.4)"; x.strokeRect(cx + r * 0.2, H * 0.48, r * 0.5, H * 0.26); heart(cx + r * 0.45, H * 0.6, H * 0.08 * Math.min(1, t / 7) * (1 + b)); }
+        if (k === "fall" && t < 5) fig(W * 0.6, H * 0.8 + Math.max(0, t - 4.2) * H * 0.6, H / 260);
+        if (k === "fall" || k === "step" && t > 11) heart(cx, cy, r * 0.4 * (1 + (RM ? 0 : b)));
+        if (k === "step" && t < 9.6) fig(cx, H * 0.95 - t * H * 0.02, H / (230 + t * 30));
+        if (k === "start" && t > 8.6) { x.fillStyle = "rgba(0,0,0," + Math.min(1, (t - 8.6) * 1.2) + ")"; x.fillRect(0, 0, W, H); }
+      }
+      if (k === "fall" && t > 5) { var tmp = document.createElement("canvas"); tmp.width = W; tmp.height = H; tmp.getContext("2d").drawImage(c, 0, 0); x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.save(); x.translate(W / 2, H / 2); x.rotate(Math.PI / 2); x.drawImage(tmp, -W / 2, -H / 2); x.restore(); }
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      if (!RM) { x.fillStyle = "rgba(255,255,255,.07)"; for (var nn = 0; nn < 300; nn++) x.fillRect(Math.random() * W | 0, Math.random() * H | 0, 1, 1); }
+      var v = x.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.85)"); x.fillStyle = v; x.fillRect(0, 0, W, H);
+    }
+    return { size: size, frame: frame, dispose: function () { c.remove(); } };
+  }
+  // ---- «???»: static, the cipher, the real face for a frame, WHY
+  function tapeX(host) {
+    var c = document.createElement("canvas"); host.appendChild(c); var x = c.getContext("2d"), W = 0, H = 0, img = null, SEEN = drawSeen().c;
+    var words = ["WHY", "HE IS STILL WATCHING", "WHY", "LOOK", "?", "IT KNOWS", "WHY"];
+    function size() { W = c.width = Math.ceil(innerWidth / 3); H = c.height = Math.ceil(innerHeight / 3); c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; c.style.imageRendering = "pixelated"; img = x.createImageData(W, H); }
+    function frame(t) {
+      var d = img.data, red = t > 6.2;
+      if (RM && frame.done) { /* reduced motion: still noise */ } else {
+        for (var i = 0; i < d.length; i += 4) { var v = Math.random() < 0.5 ? 0 : Math.random() * 150; d[i] = v * (red ? 1.3 : 1); d[i + 1] = v * (red ? 0.6 : 1); d[i + 2] = v * (red ? 0.6 : 1); d[i + 3] = 255; }
+        frame.done = 1;
+      }
+      x.putImageData(img, 0, 0);
+      if (!RM || (t * 2 | 0) % 2) for (var j = 0; j < 3; j++) { var w = words[(t * 3 + j * 2 | 0) % words.length], p = 1 + (j % 2); glyphText(x, w, (Math.sin(t * 3.1 + j * 2) * 0.4 + 0.3) * W, (j * 0.3 + 0.12) * H, p, j ? "rgba(255,255,255,.75)" : "rgba(255,40,60,.8)"); }
+      var fl = RM ? (t > 3 && t < 3.3) : (t > 3 && t < 3.07 || t > 6.2 && t < 6.26);
+      if (fl) { var k2 = Math.min(W / 72, H / 112) * 1.1; x.imageSmoothingEnabled = false; x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.drawImage(SEEN, (W - 72 * k2) / 2, (H - 112 * k2) / 2, 72 * k2, 112 * k2); }
+      if (t > 7.2) { x.fillStyle = "rgba(0,0,0," + Math.min(0.92, (t - 7.2) * 1.5) + ")"; x.fillRect(0, 0, W, H); var pp = Math.max(2, Math.floor(W / 26)), tw = 3 * (GW + 1) * pp - pp; glyphText(x, "WHY", (W - tw) / 2 + (RM ? 0 : (Math.random() - 0.5) * 2), H / 2 - GH * pp / 2, pp, "#ff1e3c"); }
+    }
+    return { size: size, frame: frame, dispose: function () { c.remove(); } };
+  }
+
+  // ---- «почему»: the VCR's PLAY with nothing inside, or the empty last slot. At most once a minute; otherwise a «?» flickers.
+  var WHYO = false;
+  function whyGo(after, force) {
+    var now = Date.now(), last = Number(lsGet(K_WHY)) || 0;
+    if (WHYO || TP) return;
+    if (!force && now - last < 60000 && now >= last) { qFlicker(); if (after) after(); return; }
+    lsSet(K_WHY, String(now)); WHYO = true;
+    tapePlay(0, function () { WHYO = false; if (after) after(); }, true);
+  }
+  function qFlicker() {
+    var q = el("div", "e7-qf", glyphSvg("?", "e7-qfg")); q.setAttribute("aria-hidden", "true"); document.body.appendChild(q);
+    setTimeout(function () { q.remove(); }, RM ? 300 : 520);
+  }
+  // ---- the archive: a VCR, a tray of unmarked cassettes, a shelf of numbered slots
+  var ARC = null;
+  function vcrSound(kind) {
+    if (!SND.on) return; ac();
+    if (kind === "in") { beep(1500, 0.03, "square", 0.025); setTimeout(function () { beep(70, 0.14, "square", 0.07, 42); beep(180, 0.6, "sawtooth", 0.012, 210); }, 120); }
+    if (kind === "out") { beep(90, 0.1, "square", 0.05, 60); setTimeout(function () { beep(1200, 0.03, "square", 0.02); }, 90); }
+    if (kind === "lit") beep(880, 0.12, "triangle", 0.03, 1320);
+  }
+  function archiveOpen(onClose) {
+    if (ARC) return;
+    var o = el("div", "e7"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Записи");
+    o.innerHTML = '<div class="e7-in"><div class="e7-hd"><span class="e2c e7-ttl">' + gl("RECORDS") + '</span><small>Записи</small></div>' +
+      '<div class="e7-vcr"><div class="e7-face"><span class="e7-brand e2c" aria-hidden="true">' + gl("GATE") + '</span>' +
+      '<button class="e7-door" type="button" aria-label="Видеомагнитофон: вставить выбранную кассету"><i class="e7-flap"></i></button>' +
+      '<div class="e7-lcd" aria-hidden="true"><span class="e7-lt">--:--</span><i class="e7-trk"></i></div>' +
+      '<div class="e7-btns"><span class="e7-led" aria-hidden="true"></span><button class="e7-play" type="button" aria-label="Воспроизвести">' + glyphSvg(">", "eg") + "</button></div></div>" +
+      '<div class="e7-feet" aria-hidden="true"><i></i><i></i></div></div>' +
+      '<div class="e7-tray"><span class="e2c e7-lbl" aria-label="Неизвестные кассеты">' + gl("UNKNOWN") + '</span><div class="e7-cs"></div><p class="e7-hint"></p></div>' +
+      '<div class="e7-shelf"></div></div><button class="e7-x" type="button" aria-label="Закрыть">✕</button>';
+    document.body.appendChild(o); document.body.classList.add("e2-lock");
+    var cs = o.querySelector(".e7-cs"), shelf = o.querySelector(".e7-shelf"), hint = o.querySelector(".e7-hint"), lcd = o.querySelector(".e7-lt"), vcr = o.querySelector(".e7-vcr"), door = o.querySelector(".e7-door");
+    var sel = -1, busy = false, drag = null, noClick = 0;
+    ARC = { o: o };
+    function render(lit) {
+      var s = tstore();
+      cs.innerHTML = s.inv.map(function (_, i) { return '<button class="e7-c' + (i === sel ? " sel" : "") + '" type="button" data-i="' + i + '" aria-label="Кассета без подписи ' + (i + 1) + '">' + casSvg("e7-cg") + "</button>"; }).join("");
+      hint.textContent = s.inv.length ? "Перетащите кассету в видеомагнитофон (или нажмите на неё, потом на магнитофон)" : "Кассет нет — они иногда выпадают в игре";
+      var h = "";
+      for (var id = 1; id <= TX; id++) {
+        var TD = TAPES[id - 1], has = s.f.indexOf(id) >= 0, last = id === TX, num = last ? "?" : id;
+        h += '<button class="e7-slot ' + tierOf(TD.odds) + (has ? " on" : "") + (last ? " last" : "") + (lit === id ? " lit" : "") + '" type="button" data-id="' + id + '" aria-label="Запись №' + num + (has && !last ? " — " + TD.ru : " — не найдена") + ", " + oddsTxt(TD.odds) + '">' +
+          "<b>№" + num + "</b>" + (has ? '<span class="e7-spine">' + casSvg("e7-sg") + '<span class="e2c">' + gl(last ? "WHY" : TD.en) + "</span></span><small>" + esc(TD.ru) + "</small>" : '<span class="e7-q">???</span><small>???</small>') +
+          "<em>" + oddsTxt(TD.odds) + "</em></button>";
+      }
+      shelf.innerHTML = h;
+    }
+    render();
+    function rectOf(e) { var r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+    function fly(from, to, done, after) {          // a cassette ghost flying between two points
+      var g = el("div", "e7-ghost", casSvg("e7-cg")); document.body.appendChild(g);
+      var put = function (p) { g.style.transform = "translate(" + (p.x - 32) + "px," + (p.y - 20) + "px)"; };
+      put(from);
+      if (RM || !g.animate) { put(to); setTimeout(function () { g.remove(); done(); }, 60); return g; }
+      var a = g.animate([{ transform: "translate(" + (from.x - 32) + "px," + (from.y - 20) + "px) rotate(-4deg)" }, { transform: "translate(" + (to.x - 32) + "px," + (to.y - 20) + "px) rotate(0deg)" }], { duration: 460, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
+      a.onfinish = function () {
+        if (after === "in") { var b = g.animate([{ transform: "translate(" + (to.x - 32) + "px," + (to.y - 20) + "px)", opacity: 1 }, { transform: "translate(" + (to.x - 32) + "px," + (to.y - 6) + "px) scale(.92,.25)", opacity: 0 }], { duration: 260, easing: "ease-in", fill: "forwards" }); b.onfinish = function () { g.remove(); done(); }; }
+        else { g.remove(); done(); }
+      };
+      return g;
+    }
+    function insert(from, spec) {             // spec: { inv: index } or { id }
+      if (busy || TP) return; busy = true; sel = -1;
+      var s = tstore(), id = spec.id || s.inv[spec.inv];
+      if (spec.inv != null) { var src = cs.querySelector('[data-i="' + spec.inv + '"]'); if (src) src.style.visibility = "hidden"; }
+      vcr.classList.add("open");
+      fly(from, rectOf(door), function () {
+        vcr.classList.remove("open"); vcr.classList.add("load"); vcrSound("in"); lcd.textContent = "LOAD";
+        setTimeout(function () { lcd.textContent = "PLAY"; vcr.classList.add("play"); }, RM ? 100 : 650);
+        setTimeout(function () {
+          tapePlay(id, function () {
+            var fresh = false;
+            if (spec.inv != null) { var i2 = s.inv.indexOf(id); if (i2 >= 0) s.inv.splice(i2, 1); if (s.f.indexOf(id) < 0) { s.f.push(id); fresh = true; } tsave(); }
+            vcr.classList.remove("play"); lcd.textContent = "EJECT"; vcrSound("out"); render();
+            var slot = shelf.querySelector('[data-id="' + id + '"]');
+            if (slot && !RM) slot.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            setTimeout(function () {
+              fly(rectOf(door), slot ? rectOf(slot) : rectOf(door), function () {
+                vcr.classList.remove("load"); lcd.textContent = "--:--"; render(id); vcrSound("lit"); busy = false;
+                if (fresh) toast("Запись №" + (id === TX ? "???" : id) + " — на полке");
+              });
+            }, RM ? 0 : 260);
+          });
+        }, RM ? 200 : 1150);
+      }, "in");
+    }
+    function onTap(e) {
+      if (Date.now() < noClick) return;
+      var c = e.target.closest(".e7-c"), sl = e.target.closest(".e7-slot");
+      if (c) { var i = Number(c.dataset.i); sel = sel === i ? -1 : i; render(); vcr.classList.toggle("want", sel >= 0); return; }
+      if (sl) {
+        var id = Number(sl.dataset.id);
+        if (sl.classList.contains("on")) return insert(rectOf(sl), { id: id });
+        if (id === TX) return whyGo();
+        sl.classList.remove("nope"); void sl.offsetWidth; sl.classList.add("nope"); return;
+      }
+      if (e.target.closest(".e7-door")) { if (sel >= 0) { vcr.classList.remove("want"); insert(rectOf(cs.querySelector('[data-i="' + sel + '"]') || door), { inv: sel }); } return; }
+      if (e.target.closest(".e7-play")) { if (!busy) whyGo(); return; }
+      if (e.target.closest(".e7-x")) close();
+    }
+    o.addEventListener("click", onTap);
+    // drag & drop (pointer): a cassette from the tray or a filed one from the shelf, into the VCR
+    o.addEventListener("pointerdown", function (e) {
+      var c = e.target.closest(".e7-c, .e7-slot.on"); if (!c || busy || e.button) return;
+      drag = { el: c, x: e.clientX, y: e.clientY, id: e.pointerId, g: null };
+    });
+    o.addEventListener("pointermove", function (e) {
+      if (!drag || drag.id !== e.pointerId) return;
+      if (!drag.g) { if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 10) return; drag.g = el("div", "e7-ghost drag", casSvg("e7-cg")); document.body.appendChild(drag.g); if (drag.el.classList.contains("e7-c")) drag.el.style.visibility = "hidden"; }
+      e.preventDefault(); drag.g.style.transform = "translate(" + (e.clientX - 32) + "px," + (e.clientY - 30) + "px) rotate(-6deg) scale(1.1)";
+      var r = vcr.getBoundingClientRect(); vcr.classList.toggle("want", e.clientX > r.left && e.clientX < r.right && e.clientY > r.top - 20 && e.clientY < r.bottom + 20);
+    });
+    var up = function (e) {
+      if (!drag || drag.id !== e.pointerId) return; var d = drag; drag = null; if (!d.g) return;
+      noClick = Date.now() + 350; var r = vcr.getBoundingClientRect(), over = e.clientX > r.left && e.clientX < r.right && e.clientY > r.top - 20 && e.clientY < r.bottom + 20;
+      vcr.classList.remove("want"); d.g.remove(); d.el.style.visibility = "";
+      if (over && e.type === "pointerup") insert({ x: e.clientX, y: e.clientY - 10 }, d.el.classList.contains("e7-c") ? { inv: Number(d.el.dataset.i) } : { id: Number(d.el.dataset.id) });
+    };
+    o.addEventListener("pointerup", up); o.addEventListener("pointercancel", up);
+    function close() {
+      if (!ARC || busy) return; ARC = null; document.removeEventListener("keydown", onKey);
+      if (!E2) document.body.classList.remove("e2-lock");
+      o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 300);
+      if (onClose) onClose();
+    }
+    var onKey = function (e) { if (e.key === "Escape" && !TP && !document.querySelector(".e6.on")) close(); };
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { o.classList.add("on"); o.focus({ preventScroll: true }); });
+    return { close: close };
+  }
+  try {
+    var tq = qp("tape"), tn = tq === "x" ? TX : parseInt(tq, 10);
+    if (tn >= 1 && tn <= TX) setTimeout(function () { tapePlay(tn, null); }, 300);
+    else if (qp("why") === "1") setTimeout(function () { whyGo(null, true); }, 300);
+  } catch (e) { /* old browser */ }
   // ---- the letter: «ПИСЬМО №∞»
   var LETTER = "TO MY FAMILY. I DO NOT SLEEP ANYMORE. WHEN I DO, I DREAM OF THE GATE. A RED HEART IS BEATING INSIDE IT. IT CALLS ME BY A NAME I DO NOT REMEMBER. MY HANDS SHAKE. SOMETIMES I FALL AND WAKE UP HOURS LATER ON THE LAB FLOOR. THE OTHERS SAY I SPEAK IN SYMBOLS NOW. I THINK I AM BECOMING SOMETHING ELSE. IF I DIE, DO NOT LOOK FOR MY BODY. LOOK FOR THE LIGHT BEHIND THE GATE. - D.";
   var LTR = null;
