@@ -307,4 +307,7 @@ body.e2-lock{overflow:hidden}
 html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 img{-webkit-user-drag:none;user-drag:none}
-.brand img,.egg-msg,.egg-q{touch-action:manipulation;cursor:pointer}
+.brand,.brand img,.hero-gate img,.egg-msg,.egg-q,.egg-x{touch-action:manipulation;cursor:pointer}
+.egg-x{position:absolute;top:14px;right:14px;width:44px;height:44px;background:none;border:2px solid #fff;color:#fff;font:18px/1 var(--px);cursor:pointer;opacity:.85}
+.egg-x:hover,.egg-x:focus-visible{background:#fff;color:#000;outline:none}
+.egg-q{color:#3a3a3a}

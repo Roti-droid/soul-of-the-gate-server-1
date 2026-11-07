@@ -396,7 +396,8 @@
     var o = el("div", "egg"), msg = "TOBY DOG", h = "";
     for (var i = 0; i < msg.length; i++) h += msg[i] === " " ? '<span class="gsp"></span>' : '<span class="gw" style="animation-delay:' + (0.6 + i * 0.18).toFixed(2) + 's">' + glyphSvg(msg[i]) + "</span>";
     o.innerHTML = '<div class="egg-msg" role="img" aria-label="Шифр Врат">' + h + '</div><p class="egg-hint">* ...</p>' +
-      '<button class="egg-q" type="button" aria-label="?">' + glyphSvg("?", "egg-qg") + "</button>";
+      '<button class="egg-q" type="button" aria-label="?">' + glyphSvg("?", "egg-qg") + "</button>" +
+      '<button class="egg-x" type="button" aria-label="Закрыть">✕</button>';
     o.tabIndex = -1;
     document.body.appendChild(o);
     document.body.classList.add("glitching");
@@ -413,13 +414,14 @@
     o.addEventListener("click", function (e) {
       if (Date.now() - openedAt < 600) return;   // the tap that opened it must not close it
       var t = e.target.closest ? e.target : e.target.parentNode;
+      if (t.closest(".egg-x")) { close(); return; }
       if (t.closest(".egg-q")) { close(); shardsOpen(); return; }
       if (t.closest(".egg-msg")) {     // three clicks on the message open the door behind the door
         var n = Date.now(); mc = mc.filter(function (v) { return n - v < 1500; }); mc.push(n);
         if (mc.length >= 3) { close(); shardsOpen(); }
         return;
       }
-      close();
+      // only the ✕ closes it
     });
     document.addEventListener("keydown", esc2);
   }
@@ -431,15 +433,20 @@
     if (typed === "gaster") { typed = ""; egg(); }
   });
   var taps = [];
-  var gateImg = document.querySelector(".brand img");
-  // phones: count taps on pointerup (no double-tap zoom / selection eats them); the icon itself never navigates
-  gateImg.addEventListener("pointerup", function (e) {
+  // 5 quick taps on the logo (gate icon OR the «SOUL OF THE GATE» text) or on the big gate on the home page.
+  // Counted on pointerup so double-tap zoom / selection can't eat them; on the home page the logo doesn't navigate.
+  function tapGate(e) {
     if (e.pointerType === "mouse" && e.button) return;
     var t = Date.now(); taps = taps.filter(function (x) { return t - x < 3000; }); taps.push(t);
     if (taps.length >= 5) { taps = []; egg(); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".brand, .hero-gate img"), function (n) {
+    n.addEventListener("pointerup", tapGate);
+    n.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   });
-  gateImg.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
-  gateImg.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  document.querySelector(".brand").addEventListener("click", function (e) {
+    if (location.pathname === "/" || /index\.html$/.test(location.pathname)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
 
   // ---------------------------------------------------------------- the egg inside the egg: «Осколки Врат» → a sealed file → the one whose name was erased.
   // Entry: in the cipher overlay click the message 3 times, or the faint flickering «?» glyph in its corner.
