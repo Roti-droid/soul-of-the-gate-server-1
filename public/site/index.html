@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<script>
+/* the web game moved to /play: a Telegram Mini App / an installed web app opening "/" goes straight to the game */
+(function () {
+  try {
+    var h = String(location.hash || ""), sa = false;
+    try { sa = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches; } catch (e) {}
+    if (location.pathname === "/" && (/tgWebApp(Data|Version|Platform)=/.test(h) || window.TelegramWebviewProxy || sa)) location.replace("/play" + location.search + h);
+  } catch (e) {}
+})();
+</script>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<title>Soul of the Gate — Душа Врат</title>
+<meta name="description" content="Soul of the Gate (Душа Врат) — приключенческая инди-игра от fo4si для Android и ПК. Главы, скачивание, новости.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Soul of the Gate — Душа Врат">
+<meta property="og:description" content="Приключенческая инди-игра от fo4si. Android и ПК.">
+<meta property="og:image" content="/og-image.png">
+<link rel="icon" type="image/svg+xml" href="/site/img/gate.svg">
+<link rel="preload" href="/site/fonts/ps2p-lat.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site/site.css">
+</head>
+<body>
+<canvas id="stars" aria-hidden="true"></canvas>
+<header class="top">
+  <a class="brand" href="/" data-link><img src="/site/img/gate.svg" alt="" width="24" height="24"><span>SOUL OF THE GATE</span></a>
+  <button class="burger" id="burger" aria-label="Меню" aria-expanded="false"><span></span><span></span><span></span></button>
+  <nav class="nav" id="nav">
+    <a href="/" data-link data-page="home">Главная</a>
+    <a href="/chapters" data-link data-page="chapters">Главы</a>
+    <a href="/download" data-link data-page="download">Скачать</a>
+    <a href="/news" data-link data-page="news">Новости</a>
+    <a href="/play" class="nav-play">Играть</a>
+    <a href="/login" data-link data-page="login" id="navUser">Войти</a>
+  </nav>
+</header>
+
+<main id="view">
+  <!-- HOME -->
+  <section class="page" data-page="home">
+    <div class="hero">
+      <div class="hero-gate"><img src="/site/img/gate.svg" alt="" width="96" height="96"></div>
+      <h1 class="title" aria-label="Soul of the Gate"><span>SOUL</span> <span>OF THE</span> <span>GATE</span></h1>
+      <p class="subtitle">ДУША ВРАТ</p>
+      <p class="tag">приключенческая инди-игра · Android и&nbsp;ПК</p>
+      <div class="cta">
+        <a class="btn btn-main" href="/play"><i class="heart"></i>Играть в браузере</a>
+        <a class="btn" href="/download" data-link>Скачать</a>
+      </div>
+      <p class="hint blink">* Душа стоит у Врат. Врата ждут.</p>
+    </div>
+    <div class="wrap">
+      <h2 class="h2 reveal">ГЛАВЫ</h2>
+      <div class="chapters chapters-mini reveal" id="homeChapters"></div>
+      <p class="more reveal"><a href="/chapters" data-link>Все главы →</a></p>
+      <h2 class="h2 reveal">НОВОСТИ</h2>
+      <div id="homeNews" class="news reveal"></div>
+      <p class="more reveal"><a href="/news" data-link>Все новости →</a></p>
+    </div>
+  </section>
+
+  <!-- CHAPTERS -->
+  <section class="page" data-page="chapters" hidden>
+    <div class="wrap">
+      <h1 class="h1">ГЛАВЫ</h1>
+      <p class="lead">Серия из 10 глав. Сейчас открыта Глава 1 — остальные Врата пока заперты.</p>
+      <div class="chapters" id="chapters"></div>
+    </div>
+  </section>
+
+  <!-- DOWNLOAD -->
+  <section class="page" data-page="download" hidden>
+    <div class="wrap">
+      <h1 class="h1">СКАЧАТЬ</h1>
+      <p class="lead">Android-версия — файл APK. Можно играть и прямо в браузере: <a href="/play">открыть игру</a>.</p>
+      <div id="files" class="files"><p class="muted">Загрузка…</p></div>
+      <details class="apk-help reveal">
+        <summary>Как установить APK на Android</summary>
+        <ol>
+          <li>Скачайте файл на телефон.</li>
+          <li>Откройте его из «Загрузок». Если телефон спросит — разрешите установку из этого источника.</li>
+          <li>Нажмите «Установить». Обновление ставится поверх, прогресс сохраняется.</li>
+        </ol>
+      </details>
+    </div>
+  </section>
+
+  <!-- NEWS -->
+  <section class="page" data-page="news" hidden>
+    <div class="wrap">
+      <h1 class="h1">НОВОСТИ</h1>
+      <div id="news" class="news"></div>
+    </div>
+  </section>
+
+  <!-- LOGIN -->
+  <section class="page" data-page="login" hidden>
+    <div class="wrap narrow">
+      <h1 class="h1">ВХОД</h1>
+      <p class="lead">Войдите своим игровым аккаунтом — тем же, что в игре.</p>
+      <p class="msg err" id="loginErr" hidden></p>
+      <div class="box" id="gpwBox" hidden>
+        <h3>Пароль аккаунта</h3>
+        <p class="muted">У аккаунта есть пароль — введите его, чтобы закончить вход через Google.</p>
+        <form id="gpwForm" class="form"><input type="password" name="pw" autocomplete="current-password" placeholder="Пароль" required><button class="btn btn-main" type="submit">Войти</button></form>
+      </div>
+      <div class="box" id="gBox" hidden>
+        <a class="btn btn-main btn-wide" href="/site/auth/google"><i class="g"></i>Войти через Google</a>
+        <p class="muted small">Работает, если Google привязан в игре: Профиль → «Привязать Google».</p>
+      </div>
+      <div class="box" id="localBox" hidden>
+        <h3>Аккаунт из браузерной игры</h3>
+        <p class="muted">В этом браузере уже есть ваш аккаунт <b id="localNick"></b>.</p>
+        <button class="btn btn-main btn-wide" id="localBtn" type="button">Войти этим аккаунтом</button>
+      </div>
+      <div class="box">
+        <h3>Ник и пароль</h3>
+        <form id="pwForm" class="form">
+          <input name="login" autocomplete="username" placeholder="Ник или ID аккаунта" required maxlength="32">
+          <input type="password" name="pw" autocomplete="current-password" placeholder="Пароль" required>
+          <button class="btn" type="submit">Войти</button>
+        </form>
+        <p class="muted small">Пароль задаётся в игре: Профиль → «Достижения и аккаунт».</p>
+      </div>
+      <div class="box">
+        <h3>Код из бота</h3>
+        <form id="codeForm" class="form">
+          <input name="code" placeholder="G-XXXXXX" required maxlength="12" autocapitalize="characters">
+          <button class="btn" type="submit">Войти</button>
+        </form>
+        <p class="muted small">Отправьте боту игры <code>/login</code> — он пришлёт одноразовый код.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACCOUNT -->
+  <section class="page" data-page="account" hidden>
+    <div class="wrap narrow">
+      <h1 class="h1">АККАУНТ</h1>
+      <div class="box" id="accBox"></div>
+    </div>
+  </section>
+
+  <!-- DEVELOPER CABINET -->
+  <section class="page" data-page="dev" hidden>
+    <div class="wrap">
+      <h1 class="h1">КАБИНЕТ РАЗРАБОТЧИКА</h1>
+      <div id="devGate" class="box" hidden></div>
+      <div id="devBody" hidden>
+        <div class="box">
+          <h3>Загрузить файл</h3>
+          <form id="upForm" class="grid-form">
+            <label class="full drop" id="drop"><input type="file" name="file" id="upFile" required><span id="dropText">Выберите файл или перетащите его сюда (до 200 МБ)</span></label>
+            <label>Название<input name="title" required maxlength="100" placeholder="Soul of the Gate — Глава 1"></label>
+            <label>Игра<input name="game" maxlength="60" value="Soul of the Gate" list="games"></label>
+            <label>Глава<input name="chapter" type="number" min="0" max="99" value="1"></label>
+            <label>Платформа<select name="platform"><option value="android">Android (APK)</option><option value="pc">ПК</option><option value="other">Другое</option></select></label>
+            <label>Версия<input name="version" maxlength="30" placeholder="2.3.14"></label>
+            <label class="row"><input type="checkbox" name="paid"> Платный</label>
+            <label>Цена, грн<input name="price" type="number" min="0" max="100000" value="0"></label>
+            <label class="row"><input type="checkbox" name="publish" checked> Опубликовать сразу</label>
+            <label class="full">Заметки<textarea name="notes" maxlength="2000" rows="3" placeholder="Что нового"></textarea></label>
+            <div class="full up-actions"><button class="btn btn-main" type="submit" id="upBtn">Загрузить</button><span id="upStatus" class="muted"></span></div>
+            <div class="full bar" id="upBar" hidden><i></i></div>
+          </form>
+          <datalist id="games"><option value="Soul of the Gate"></option></datalist>
+        </div>
+        <h2 class="h2">ФАЙЛЫ</h2>
+        <div id="devFiles" class="dev-files"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><a href="/privacy.html">Политика конфиденциальности</a> · <a href="/terms.html">Условия</a></p>
+  <p class="muted">© 2026 fo4si · Soul of the Gate</p>
+  <!-- the Gate speaks in its own letters. the key lies on the floor, where nobody looks. -->
+  <p class="gate-key" id="gateKey" aria-hidden="true"></p>
+</footer>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/site/site.js" defer></script>
+</body>
+</html>

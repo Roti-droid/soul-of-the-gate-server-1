@@ -1,0 +1,2 @@
+DejaVu fonts (Bitstream Vera derivative) — free license: https://dejavu-fonts.github.io/License.html
+Fonts are (c) Bitstream (see below). DejaVu changes are in public domain. Subset to Latin + Cyrillic for this site.

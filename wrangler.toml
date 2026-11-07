@@ -1,0 +1,126 @@
+# Cloudflare Worker «Кристальный забег» — онлайн-сервер + сама игра (папка public)
+name = "crystal-run-server"
+main = "index.js"
+compatibility_date = "2026-09-15"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+[[durable_objects.bindings]]
+name = "DONATE"
+class_name = "Donate"
+
+[[durable_objects.bindings]]
+name = "ACCOUNTS"
+class_name = "Accounts"
+
+# 2.2: испытание дня, профиль, призраки, рейд-босс, сезон, god-панель (online.js)
+[[durable_objects.bindings]]
+name = "ONLINE"
+class_name = "Online"
+
+# 2.4 еженедельный онлайн-рейд (raid3.js): хаб подбора матчей + один объект на матч
+[[durable_objects.bindings]]
+name = "RAIDHUB"
+class_name = "RaidHub"
+
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "Match"
+
+# «Кристальная капсула» (chest3.js)
+[[durable_objects.bindings]]
+name = "CHEST3"
+class_name = "Chest3"
+
+# 2.3.12 «Режимы» (modes.js): ghosts / push matchmaking / rating hub + one object per push match
+[[durable_objects.bindings]]
+name = "MODESHUB"
+class_name = "ModesHub"
+
+[[durable_objects.bindings]]
+name = "PUSHMATCH"
+class_name = "PushMatch"
+
+# «Создать»: уровни игроков, «Искры автора», «Магазин автора», «Битвы авторов» (creator.js)
+[[durable_objects.bindings]]
+name = "CREATOR"
+class_name = "Creator"
+
+# the official website (site.js): uploaded game files (1 MiB chunks), purchases stub, site sessions
+[[durable_objects.bindings]]
+name = "SITE"
+class_name = "Site"
+
+# Free plan: Durable Objects must use SQLite storage
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lobby"]
+
+# донат: оплаты звёздами и одноразовые коды
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Donate"]
+
+# аккаунты, облачные сохранения, привязка Telegram, таблица рекордов сезона
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Accounts"]
+
+# 2.2 онлайн и сезоны
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["Online"]
+
+# 2.4 еженедельный онлайн-рейд
+[[migrations]]
+tag = "v5"
+new_sqlite_classes = ["RaidHub", "Match"]
+
+# «Кристальная капсула»: случайный скин за кристаллы (счётчик гаранта, журнал наград)
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["Chest3"]
+
+# 2.3.12 «Режимы»
+[[migrations]]
+tag = "v7"
+new_sqlite_classes = ["ModesHub", "PushMatch"]
+
+# «Создать»: уровни игроков, «Искры автора» (✦), магазин автора, битвы авторов
+[[migrations]]
+tag = "v8-creator"
+new_sqlite_classes = ["Creator"]
+
+# the official website: files from the developer cabinet, purchases, site sessions
+[[migrations]]
+tag = "v9-site"
+new_sqlite_classes = ["Site"]
+
+[vars]
+# website: the version shown for the built-in /CrystalRun.apk (Chapter 1 · Android) until an own file is uploaded
+SITE_APK_VERSION = "2.3.13"
+# 2.3.12 the owner's account (an id is not a secret): owner rights = OWNER_ID (secret) or this
+OWNER_ID_ALT = "f1dca78b519d"
+# 2.3.12 (owner 07.11): the god panel works for the signed-in owner account without GOD_KEY
+GOD_NO_KEY = "0"
+# 2.3.13 (owner 07.11): new content on
+MODES_ON = "1"
+CREATOR_ON = "1"
+RAID3_ACTS = "1"
+# через сколько секунд закрывается комната, в которой ждёт один игрок
+ROOM_TTL_SEC = "600"
+# Бот доната: BOT_TOKEN, WEBHOOK_SECRET, ADMIN_IDS, BOT_USERNAME задаются секретами
+# (setup_bot.bat делает это сам: npx wrangler secret put ...). Без них донат просто выключен.
+
+[observability]
+enabled = true
+
+# Игра (public/index.html и иконки). run_worker_first: сначала index.js —
+# он отдаёт WebSocket в Lobby, /health — текст «Crystal Run server OK», остальное — файлы.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
