@@ -213,7 +213,7 @@
       return;
     }
     gate.hidden = true; body.hidden = false;
-    loadDevFiles();
+    loadDevFiles(); devCipher();
   }
   function loadDevFiles() {
     var box = $("devFiles");
@@ -378,6 +378,7 @@
   // extra signs of the same hand: a full stop and the unknown
   GLYPH["."] = [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,1,0,0];
   GLYPH["?"] = [0,1,1,1,0, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,1,0,0];
+  GLYPH[","] = [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,1,0,0, 0,1,0,0,0];
   GLYPH[":"] = [0,0,0,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,1,0,0, 0,0,0,0,0];
   GLYPH["-"] = [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0];
   GLYPH["!"] = [0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,1,0,0];
@@ -509,11 +510,11 @@
     out.push({ t: t + 0.05, d: 0.6, v: "a", f: 240, dive: 1 });
     return out;
   }
-  function laughPlay(plan, when) {
+  function laughPlay(plan, when, vol) {
     if (!SND.on) return; var a = ac(); if (!a) return; laughStop();
     try {
       var t0 = a.currentTime + when, last = plan[plan.length - 1], tEnd = t0 + last.t + last.d + 0.8;
-      var out = a.createGain(); out.gain.value = 0.55;
+      var out = a.createGain(); out.gain.value = vol || 0.55;
       var comp = a.createDynamicsCompressor(); out.connect(comp); comp.connect(a.destination);
       var bus = a.createGain(), ring = a.createGain(); ring.gain.value = 0.65;
       var rm = a.createOscillator(), rmg = a.createGain(); rm.type = "square"; rm.frequency.value = 53; rmg.gain.value = 0.35; rm.connect(rmg); rmg.connect(ring.gain);
@@ -589,6 +590,8 @@
     return '<button class="' + cls + ' e2-play" type="button" aria-label="' + aria + '">' + glyphSvg(">", "eg e2-pg") + (word ? '<span class="e2c e2-pw">' + gl(word) + "</span>" : "") + "</button>";
   }
   // the soul: the owner's drawn heart (img/heart.png), preloaded; until it loads (or if it fails) the old pixel heart stands in
+  var GIMG = new Image(), GOK = false;   // the grin from the intro, exported as a sprite (special seed only)
+  GIMG.onload = function () { GOK = true; }; GIMG.decoding = "async"; GIMG.src = "/site/img/grin.png";
   var HIMG = new Image(), HOK = false;
   HIMG.onload = function () { HOK = true; }; HIMG.decoding = "async"; HIMG.src = "/site/img/heart.png";
   function beatScale(now, hp) {      // lub-dub; faster when the soul is weak
@@ -632,8 +635,12 @@
     }
     function paintBest() { setG(hudB, "b", "BEST " + best.toFixed(1)); }
     function reset() {
-      st = { t: 0, hp: 3, inv: 0, sparks: 0, hx: F / 2, hy: F * 0.72, sh: [], fx: [], spk: [], next: 0.4, nextSpk: 1.2, shake: 0,
-        qAt: Math.random() < 1 / 8 ? 6 + Math.random() * 14 : -1, qDone: false, q: null };
+      // the «?» shard: exactly 1 round in 8, once, at a random moment 6–30 s; nothing else forces it.
+      // One round in a million is the special seed: grinning faces fall instead of glyphs and a bleeding «?» always comes at 10–20 s.
+      var sp1 = seedRoll();
+      st = { t: 0, hp: 3, inv: 0, sparks: 0, hx: F / 2, hy: F * 0.72, sh: [], fx: [], spk: [], next: 0.4, nextSpk: 1.2, shake: 0, sp: sp1,
+        qAt: sp1 ? 10 + cryptoBelow(10001) / 1000 : cryptoBelow(8) === 0 ? 6 + cryptoBelow(24001) / 1000 : -1, qDone: false, q: null };
+      if (sp1) laughPlay(laughPlan(), 0.3, 0.12);
     }
     function menu(html) { scr.innerHTML = html; scr.classList.add("on"); }
     function start() {
@@ -757,6 +764,7 @@
         playBtn("AGAIN", "Ещё раз", "e2-go"));
       scr.querySelector(".e2-go").focus();
     }
+    function toFootage() { state = "file"; cancelAnimationFrame(raf); close(true); footage(); }
     function sealed() {
       state = "file"; cancelAnimationFrame(raf); beep(98, 0.9, "sawtooth", 0.05, 49);
       if (score() > best) { best = score(); lsSet(K_BEST, best.toFixed(2)); paintBest(); }
@@ -764,8 +772,20 @@
       menu('<div class="e2-file"><div class="e2c e2-fnum" aria-label="Запись неизвестна">' + gl("FILE ?? - UNKNOWN") + "</div>" +
         '<button class="e2-q" type="button" aria-label="Вскрыть запись">' + glyphSvg("?", "e2-qg") + "</button>" +
         '<div class="e2c e2-stamp" aria-label="Запечатано">' + gl("SEALED") + '</div><div class="e2c e2-sub">' + gl("TOUCH TO OPEN") + "</div></div>");
-      var q = scr.querySelector(".e2-q"); q.focus();
-      q.addEventListener("click", function (e) { e.stopPropagation(); close(true); dossier(); });
+      // The whole card opens it (the text says «touch to open»), on pointerup: Android fires no 'click' for a tap made while the
+      // steering finger is still down (two touches = not a tap), and a tap beside the small pulsing «?» used to do nothing.
+      // Only a pointer that went DOWN on the card after it appeared counts, so the touch that collected the shard never opens it.
+      var card = scr.querySelector(".e2-file"), q = scr.querySelector(".e2-q"), shownAt = performance.now(), fresh = {};
+      q.focus({ preventScroll: true });
+      var open = function () { if (state !== "file") return; state = "opening"; close(true); dossier(); };
+      card.addEventListener("pointerdown", function (e) { if (performance.now() - shownAt > 200) { fresh[e.pointerId] = 1; e.preventDefault(); } });
+      card.addEventListener("pointerup", function (e) {
+        if (!fresh[e.pointerId]) return; delete fresh[e.pointerId];
+        if (e.pointerType === "mouse" && e.button) return;
+        e.preventDefault(); e.stopPropagation(); open();
+      });
+      card.addEventListener("pointercancel", function (e) { delete fresh[e.pointerId]; });
+      card.addEventListener("click", function (e) { e.stopPropagation(); if (performance.now() - shownAt > 200) open(); });   // keyboard Enter/Space on the «?»
     }
     scr.addEventListener("click", function (e) {
       if (!e.target.closest) return;
@@ -786,12 +806,17 @@
         s = { x: Math.random() * (F - w), y: -h, vx: (Math.random() - 0.5) * 10, vy: spd };
       }
       s.w = w; s.h = h; s.sz = sz; s.g = Math.floor(Math.random() * 26); s.flip = 0;
+      if (st.sp) faceify(s);
       st.sh.push(s);
       if (t > 24 && Math.random() < 0.14) {          // a short rain line
         var gap = Math.floor(Math.random() * 5);
-        for (var i = 0; i < 8; i++) if (Math.abs(i - gap) > 0) st.sh.push({ x: i * 20 + 7, y: -GH - i * 3, vx: 0, vy: 52 + k * 30, w: GW, h: GH, sz: 1, g: Math.floor(Math.random() * 26), flip: 0 });
+        for (var i = 0; i < 8; i++) if (Math.abs(i - gap) > 0) { var rs = { x: i * 20 + 7, y: -GH - i * 3, vx: 0, vy: 52 + k * 30, w: GW, h: GH, sz: 1, g: Math.floor(Math.random() * 26), flip: 0 }; if (st.sp) faceify(rs); st.sh.push(rs); }
       }
       st.next = Math.max(0.1, 0.42 - k * 0.32) * (0.7 + Math.random() * 0.6);
+    }
+    function faceify(s) {          // the special seed: a grinning face (img/grin.png, 70×44) in place of a glyph, same centre
+      var fw = s.sz === 2 ? 16 : 10, fh = Math.round(fw * 44 / 70), cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+      s.face = 1; s.w = fw; s.h = fh; s.x = cx - fw / 2; s.y = s.vy > 0 && !s.vx ? -fh : cy - fh / 2; s.jt = Math.random() * 6;
     }
     function hit(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
     function burst(px, py, col, n) { for (var i = 0; i < n; i++) st.fx.push({ x: px, y: py, vx: (Math.random() - 0.5) * 90, vy: (Math.random() - 0.5) * 90, l: 0.35 + Math.random() * 0.3, c: col }); }
@@ -828,7 +853,7 @@
         if (p.l <= 0) st.spk.splice(i, 1);
       }
       // the unknown shard
-      if (!st.qDone && !st.q && ((st.qAt > 0 && st.t >= st.qAt) || st.t >= 30)) {
+      if (!st.qDone && !st.q && st.qAt > 0 && st.t >= st.qAt) {
         st.qDone = true; var fromL = Math.random() < 0.5;
         st.q = { x: fromL ? 8 : F - 8 - GW * 2, y: -GH * 2, w: GW * 2, h: GH * 2, vx: fromL ? 9 : -9, vy: 16, ph: 0 };
         beep(233, 0.5, "sawtooth", 0.035, 117);
@@ -836,7 +861,7 @@
       if (st.q) {
         var q = st.q; q.ph += dt; q.x += (q.vx + Math.sin(q.ph * 2.3) * 22) * dt; q.y += q.vy * dt;
         if (q.y > F + 4) st.q = null;
-        else if (hit(pb, q)) { st.q = null; burst(st.hx, st.hy, "#ffffff", 16); return sealed(); }
+        else if (hit(pb, q)) { st.q = null; burst(st.hx, st.hy, st.sp ? "#ff1e3c" : "#ffffff", 16); return st.sp ? toFootage() : sealed(); }
       }
       for (i = st.fx.length - 1; i >= 0; i--) { var f = st.fx[i]; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.92; f.vy *= 0.92; f.l -= dt; if (f.l <= 0) st.fx.splice(i, 1); }
       if (st.t >= ROUND) { st.t = ROUND; paintHud(); return end(true); }
@@ -867,12 +892,12 @@
       hx2.globalAlpha = 1;
     }
     function draw(now) {
-      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#050505"; x.fillRect(0, 0, cv.width, cv.height);
+      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = st && st.sp ? "#140204" : "#050505"; x.fillRect(0, 0, cv.width, cv.height);
       var ox = 0, oy = 0;
       if (st && st.shake > 0) { ox = Math.round((Math.random() - 0.5) * 4) * S; oy = Math.round((Math.random() - 0.5) * 4) * S; }
       x.setTransform(1, 0, 0, 1, ox, oy);
       // faint floor grid
-      x.fillStyle = "#101010";
+      x.fillStyle = st && st.sp ? "#2a060b" : "#101010";
       for (var gy = 8; gy < F; gy += 16) for (var gx = 8; gx < F; gx += 16) x.fillRect(gx * S, gy * S, S, S);
       if (!st) { drawSoul(now, 0, 0); return; }
       var t = now / 1000, i;
@@ -882,13 +907,26 @@
         if (Math.sin(t * 6 + i * 2) > 0.3) { px(p.x - 2, p.y, c); px(p.x + 2, p.y, c); px(p.x, p.y - 2, c); px(p.x, p.y + 2, c); }
       }
       for (i = 0; i < st.sh.length; i++) {
-        var s = st.sh[i], img = (s.red ? sp.r : sp.w)[s.g];
-        x.drawImage(img, Math.round(s.x * S), Math.round(s.y * S), s.w * S, s.h * S);
+        var s = st.sh[i];
+        if (s.face) {
+          if (!GOK) { x.drawImage(sp.r[s.g], Math.round(s.x * S), Math.round(s.y * S), Math.round(s.h * S * GW / GH), s.h * S); continue; }
+          var jx = RM ? 0 : Math.sin(t * 23 + s.jt) > 0.85 ? S : 0;
+          x.shadowColor = "rgba(255,30,24,.75)"; x.shadowBlur = RM ? 0 : 3 * S;
+          x.drawImage(GIMG, Math.round(s.x * S) + jx, Math.round(s.y * S), s.w * S, s.h * S); x.shadowBlur = 0;
+          continue;
+        }
+        x.drawImage((s.red ? sp.r : sp.w)[s.g], Math.round(s.x * S), Math.round(s.y * S), s.w * S, s.h * S);
       }
       if (st.q) {
         var q = st.q, qx = Math.round(q.x * S), qy = Math.round(q.y * S), qw = q.w * S, qh = q.h * S, j = RM ? 0 : S;
+        if (st.sp) {                // the bleeding one: red, smeared, dripping
+          if (!RM) { x.globalAlpha = 0.6; x.drawImage(sp.qr, qx - 2 * j, qy + j, qw, qh); x.drawImage(sp.qr, qx + j, qy - j, qw, qh); x.globalAlpha = 1; }
+          x.shadowColor = "rgba(255,0,30,.9)"; x.shadowBlur = RM ? 0 : 4 * S; x.drawImage(sp.qr, qx, qy, qw, qh); x.shadowBlur = 0;
+          for (i = 0; i < 3; i++) { var dl = 2 + ((t * 6 + i * 2.7) % 7); x.fillStyle = "#a0001a"; x.fillRect(qx + (2 + i * 3) * S, qy + qh, S, Math.round(dl * S)); }
+        } else {
         if (!RM && Math.random() < 0.5) { x.globalAlpha = 0.8; x.drawImage(sp.qr, qx - j, qy, qw, qh); x.drawImage(sp.qc, qx + j, qy + (Math.random() < 0.3 ? j : 0), qw, qh); x.globalAlpha = 1; }
         if (RM || Math.random() > 0.08) x.drawImage(sp.q, qx, qy, qw, qh);
+        }
         if (!RM) for (i = 0; i < 4; i++) px(q.x - 2 + Math.random() * (q.w + 4), q.y - 2 + Math.random() * (q.h + 4), Math.random() < 0.5 ? "#ff1e3c" : "#fff");
       }
       for (i = 0; i < st.fx.length; i++) { var f = st.fx[i]; x.globalAlpha = Math.min(1, f.l * 3); px(f.x, f.y, f.c); }
@@ -965,6 +1003,86 @@
     else if (!HOK) HIMG.addEventListener("load", function () { var b = scr.querySelector(".e2-heart"); if (b && state === "menu") b.innerHTML = '<img src="/site/img/heart.png" alt="" draggable="false">'; });
     requestAnimationFrame(function () { o.classList.add("on"); var b = scr.querySelector(".e2-first"); if (b) b.focus({ preventScroll: true }); else o.focus(); });
   }
+  // ---- «Шифр Врат» tool (owner cabinet only; pure front-end)
+  var CI_SET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?:-!";
+  var TRL = { "а": "a", "б": "b", "в": "v", "г": "g", "ґ": "g", "д": "d", "е": "e", "є": "ye", "ё": "yo", "ж": "zh", "з": "z", "и": "i", "і": "i", "ї": "yi", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya", "'": "", "’": "" };
+  function ciPrep(src) {          // → { text: upper Latin the cipher can write, tr: was anything transliterated, bad: unsupported chars }
+    var out = "", tr = false, bad = {};
+    for (var i = 0; i < src.length; i++) {
+      var ch = src[i], lo = ch.toLowerCase();
+      if (TRL.hasOwnProperty(lo)) { var t = TRL[lo]; out += ch !== lo ? t.toUpperCase() : t; tr = true; continue; }
+      if (/\s/.test(ch)) { out += " "; continue; }
+      var up = ch.toUpperCase();
+      if (CI_SET.indexOf(up) >= 0) out += up; else bad[ch] = 1;
+    }
+    return { text: out.toUpperCase().replace(/ {2,}/g, " ").trim(), tr: tr, bad: Object.keys(bad) };
+  }
+  function ciLines(text, max) { var lines = [], cur = ""; text.split(" ").forEach(function (w) { if (cur && (cur + " " + w).length > max) { lines.push(cur); cur = w; } else cur = cur ? cur + " " + w : w; }); if (cur) lines.push(cur); return lines; }
+  function ciPng(text) {
+    var P = 6, lines = ciLines(text, 24), cw = (GW + 1) * P, lh = (GH + 4) * P, pad = 6 * P;
+    var w = Math.max.apply(null, lines.map(function (l) { return l.length; })) * cw - P + pad * 2, h = lines.length * lh - 4 * P + pad * 2;
+    var c = document.createElement("canvas"); c.width = Math.max(1, w); c.height = Math.max(1, h); var x = c.getContext("2d");
+    x.fillStyle = "#000"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#fff";
+    lines.forEach(function (l, li) { for (var i = 0; i < l.length; i++) { var g = GLYPH[l[i]]; if (!g) continue; for (var k = 0; k < GW * GH; k++) if (g[k]) x.fillRect(pad + i * cw + (k % GW) * P, pad + li * lh + Math.floor(k / GW) * P, P, P); } });
+    return c;
+  }
+  function devCipher() {
+    if ($("devCipher")) return;
+    var b = el("div", "box dc"); b.id = "devCipher";
+    var kb = "", tb = "";
+    for (var i = 0; i < CI_SET.length; i++) {
+      var ch = CI_SET[i];
+      kb += '<button type="button" class="dc-k" data-c="' + esc(ch) + '" aria-label="' + esc(ch) + '">' + glyphSvg(ch, "dc-g") + "</button>";
+      tb += '<div class="dc-t"><b>' + esc(ch) + "</b>" + glyphSvg(ch, "dc-g") + "</div>";
+    }
+    b.innerHTML = '<h3>Шифр Врат</h3>' +
+      '<p class="muted dc-about">Простой шифр подстановки: у каждой латинской буквы, цифры и знака (. , ? : - !) своя нарисованная пиксельная руна 5×7. Ключ к буквам игроки находят в подвале сайта.</p>' +
+      '<label class="dc-lbl">Зашифровать<textarea id="dcIn" rows="3" maxlength="600" placeholder="HE IS STILL WATCHING."></textarea></label>' +
+      '<p class="dc-note" id="dcNote">Латиница A–Z, цифры, пробел и . , ? : - ! — кириллица переводится в латиницу автоматически.</p>' +
+      '<div class="dc-prev e3-cipher" id="dcPrev" aria-live="polite"></div>' +
+      '<div class="dc-acts"><button type="button" class="btn btn-sm" id="dcPng">Скопировать как картинку</button><button type="button" class="btn btn-sm" id="dcTxt">Скопировать текст</button></div>' +
+      '<h4 class="dc-h">Расшифровать</h4><p class="muted dc-sub">Нажимайте руны — ниже появится текст.</p>' +
+      '<div class="dc-out"><div class="dc-runes e3-cipher" id="dcRunes"></div><div class="dc-lat" id="dcLat">—</div></div>' +
+      '<div class="dc-kb">' + kb + '<button type="button" class="dc-k dc-w" data-c=" ">ПРОБЕЛ</button><button type="button" class="dc-k dc-w" data-c="bs" aria-label="Стереть">⌫</button><button type="button" class="dc-k dc-w" data-c="clr">ОЧИСТИТЬ</button></div>' +
+      '<h4 class="dc-h">Алфавит</h4><div class="dc-tab">' + tb + "</div>";
+    $("devBody").appendChild(b);
+    var inp = $("dcIn"), prev = $("dcPrev"), note = $("dcNote"), cur = { text: "" }, dec = "";
+    var paint = function () {
+      cur = ciPrep(inp.value);
+      prev.innerHTML = cur.text ? lineSvg(cur.text, "e3-g dc-pg") : '<span class="muted">предпросмотр</span>';
+      var n = [];
+      if (cur.tr) n.push("Транслитерация: " + esc(cur.text));
+      if (cur.bad.length) n.push("Нет руны для: " + esc(cur.bad.join(" ")) + " — пропущено");
+      note.innerHTML = n.length ? n.join("<br>") : "Латиница A–Z, цифры, пробел и . , ? : - ! — кириллица переводится в латиницу автоматически.";
+    };
+    inp.addEventListener("input", paint); paint();
+    $("dcTxt").addEventListener("click", function () {
+      if (!cur.text) return toast("Пусто");
+      var done = function () { toast("Текст скопирован"); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(cur.text).then(done, function () { inp.select(); toast("Не вышло — скопируйте вручную"); });
+      else toast("Буфер обмена недоступен");
+    });
+    $("dcPng").addEventListener("click", function () {
+      if (!cur.text) return toast("Пусто");
+      var c = ciPng(cur.text);
+      c.toBlob(function (blob) {
+        if (!blob) return toast("Не удалось нарисовать");
+        var dl = function () { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "shifr-vrat.png"; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast("Картинка сохранена"); };
+        try {
+          if (navigator.clipboard && window.ClipboardItem) navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(function () { toast("Картинка скопирована"); dl(); }, dl);
+          else dl();
+        } catch (e) { dl(); }
+      }, "image/png");
+    });
+    var runes = $("dcRunes"), lat = $("dcLat");
+    b.querySelector(".dc-kb").addEventListener("click", function (e) {
+      var k = e.target.closest(".dc-k"); if (!k) return;
+      var c = k.getAttribute("data-c");
+      if (c === "bs") dec = dec.slice(0, -1); else if (c === "clr") dec = ""; else if (dec.length < 300) dec += c;
+      runes.innerHTML = dec ? lineSvg(dec, "e3-g dc-pg") : "";
+      lat.textContent = dec || "—";
+    });
+  }
   // ---- the dossier: a figure in a lab coat, face scratched out, name redacted
   function drawFigure(c, seed) {
     var x = c.getContext("2d"), W = c.width, H = c.height;
@@ -1014,6 +1132,446 @@
     for (i = 0; i < 6; i++) { var yy = 5 + r() * 24; line(19 + r() * 4, yy, 50 + r() * 5, yy + (r() - 0.5) * 6, "#000"); }   // long angry strokes
     for (i = 0; i < 14; i++) { x.fillStyle = r() < 0.5 ? "#000" : "#3a3a3a"; x.fillRect(Math.round(20 + r() * 32), Math.round(28 + r() * 70), 1, 1 + Math.round(r() * 3)); }  // stains on the coat
   }
+  // ---- the face that was scratched out, seen as it is (one flash frame in the special seed's footage). Original pixel portrait 72×112:
+  // a gaunt pale head, hollow black sockets, a smile far too wide, the same lab coat.
+  var K_EYE = "sotg.file0.eye";
+  function cryptoBelow(n) {     // uniform integer in [0, n) from crypto.getRandomValues (rejection sampling: no modulo bias)
+    try {
+      var c = window.crypto || window.msCrypto, a = new Uint32Array(1), lim = 4294967296 - (4294967296 % n);
+      do { c.getRandomValues(a); } while (a[0] >= lim);
+      return a[0] % n;
+    } catch (e) { return Math.floor(Math.random() * n); }
+  }
+  function seeHim() { try { return new URLSearchParams(location.search).get("seehim") === "1"; } catch (e) { return false; } }
+  function seedRoll() { return seeHim() || cryptoBelow(1000000) === 0; }   // the special seed: exactly 1 round in 1 000 000
+  var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  var SKIN = ["#14100e", "#2c2420", "#4d433c", "#7a7068", "#a59c92", "#c9c1b6", "#e6e0d6", "#f6f2ea"];
+  function drawSeen() {          // → an offscreen 72×112 canvas without the pupils
+    var c = document.createElement("canvas"); c.width = 72; c.height = 112;
+    var x = c.getContext("2d"), seed = 4111;
+    var r = function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    var R = function (a, b, w, h, col) { x.fillStyle = col; x.fillRect(a, b, w, h); };
+    R(0, 0, 72, 112, "#070606");
+    for (var y = 0; y < 112; y++) for (var xx = 0; xx < 72; xx++) if (r() < 0.035) R(xx, y, 1, 1, r() < 0.5 ? "#100c0c" : "#0c0808");
+    // the coat: narrow shoulders, collar up
+    for (y = 63; y < 112; y++) {
+      var k = Math.min(1, (y - 63) / 10), l = Math.round(31 - k * 23), rr = Math.round(41 + k * 23);
+      R(l, y, rr - l, 1, "#dedede"); R(l, y, 2, 1, "#8e8e8e"); R(rr - 3, y, 3, 1, "#a9a9a9");
+    }
+    for (y = 63; y < 112; y++) { var hw = Math.round(Math.min(9, (y - 63) * 0.45)); R(36 - hw, y, hw * 2, 1, "#232020"); }   // dark shirt
+    R(35, 66, 2, 46, "#4a0d16"); R(35, 66, 2, 2, "#2a0509");                                                                  // the tie
+    for (y = 63; y < 112; y++) { var lw = Math.round(Math.min(10, (y - 63) * 0.5)); R(36 - lw - 4, y, 3, 1, "#c2c2c2"); R(36 + lw + 1, y, 3, 1, "#c2c2c2"); R(36 - lw - 4, y, 1, 1, "#777"); R(36 + lw + 3, y, 1, 1, "#777"); }
+    R(12, 86, 7, 5, "#ffe14a"); R(13, 87, 5, 3, "#a8861a");                                                                   // the badge
+    R(52, 84, 8, 1, "#9d9d9d"); R(53, 79, 1, 5, "#ff1e3c"); R(55, 80, 1, 4, "#5b7cff");                                       // pens
+    for (var i = 0; i < 18; i++) R(Math.round(10 + r() * 52), Math.round(76 + r() * 34), 1, 1 + Math.round(r() * 2), r() < 0.5 ? "#5a1018" : "#3a3a3a");
+    // the neck: thin, tendons
+    for (y = 54; y < 66; y++) for (xx = 31; xx <= 41; xx++) {
+      var nd = Math.abs(xx - 36) / 5.5, b = 0.5 - nd * 0.35 - (y > 61 ? 0.15 : 0) + ((xx === 34 || xx === 38) && y < 63 ? 0.12 : 0);
+      x.fillStyle = SKIN[Math.max(0, Math.min(7, Math.floor(b * 7 + BAYER[(y & 3) * 4 + (xx & 3)] / 16)))]; x.fillRect(xx, y, 1, 1);
+    }
+    // the head: a long egg, jaw narrowing to a sharp chin
+    var hw2 = function (y) {
+      if (y < 8 || y > 57) return 0;
+      if (y <= 30) return 14.5 * Math.sqrt(Math.max(0, 1 - Math.pow((30 - y) / 22.5, 2)));
+      var t = (y - 30) / 27; return 14.5 * (1 - t * t * 0.62) * (y > 54 ? Math.sqrt((58 - y) / 4) : 1);
+    };
+    var eyeL = { x: 29.5, y: 31 }, eyeR = { x: 43.5, y: 31 };
+    for (y = 8; y <= 57; y++) {
+      var w = hw2(y);
+      for (xx = Math.floor(36 - w); xx <= Math.ceil(36 + w - 1); xx++) {
+        var nx = (xx + 0.5 - 36) / Math.max(1, w); if (Math.abs(nx) > 1) continue;
+        var bb = 0.92 - nx * nx * 0.45 - (nx > 0 ? nx * 0.12 : 0);        // light from the upper left
+        if (y < 14) bb -= (14 - y) * 0.03;
+        var cheek = Math.abs(nx) > 0.42 && Math.abs(nx) < 0.92 && y > 36 && y < 52; if (cheek) bb -= 0.26 * Math.sin((Math.abs(nx) - 0.42) / 0.5 * Math.PI);   // hollow cheeks
+        if (y > 18 && y < 26 && Math.abs(nx) > 0.75) bb -= 0.18;            // sunken temples
+        [eyeL, eyeR].forEach(function (e) {                                 // the sockets: deep, wide, wet black
+          var dx = (xx + 0.5 - e.x) / 5.6, dy = (y + 0.5 - e.y) / 4.6, d = dx * dx + dy * dy;
+          if (d < 2.2) bb -= Math.max(0, 1.05 - d * 0.5) * 0.95;
+        });
+        if (y > 51) bb -= (y - 51) * 0.05;
+        var lvl = Math.floor(Math.max(0, Math.min(0.999, bb)) * 7 + BAYER[(y & 3) * 4 + (xx & 3)] / 16);
+        x.fillStyle = SKIN[Math.max(0, Math.min(7, lvl))]; x.fillRect(xx, y, 1, 1);
+      }
+    }
+    // sockets' black cores
+    [eyeL, eyeR].forEach(function (e) {
+      for (var yy = -4; yy <= 4; yy++) for (var q = -5; q <= 5; q++) {
+        var d = (q / 4.2) * (q / 4.2) + (yy / 3.2) * (yy / 3.2); if (d <= 1) R(Math.floor(e.x + q), Math.floor(e.y + yy), 1, 1, d < 0.6 ? "#000" : "#070505");
+      }
+    });
+    // the nose: long, thin, a shadow down one side
+    for (y = 32; y < 44; y++) { R(37, y, 1, 1, "#7a7068"); if (y > 36) R(38, y, 1, 1, "#4d433c"); }
+    R(35, 44, 1, 1, "#1a1412"); R(38, 44, 1, 1, "#1a1412"); R(36, 44, 2, 1, "#a59c92");
+    // the smile: thin, much too wide, corners cutting up into the cheeks
+    for (xx = 20; xx <= 52; xx++) {
+      var u = (xx - 36) / 16, my = Math.round(48.5 - u * u * 5.5 - Math.pow(Math.abs(u), 6) * 2);
+      R(xx, my, 1, 1, Math.abs(u) > 0.93 ? "#4d433c" : "#120707");
+      if (Math.abs(u) < 0.78) {                         // a sliver of teeth
+        R(xx, my + 1, 1, 1, xx % 2 ? "#d9d2c0" : "#3a2a24");
+        R(xx, my + 2, 1, 1, Math.abs(u) < 0.55 ? "#2a1a16" : "#4d433c");
+      }
+    }
+    R(19, 41, 1, 2, "#4d433c"); R(53, 41, 1, 2, "#4d433c");   // creases
+    // hair: thin, stringy, wet strands down the sides
+    for (i = 0; i < 26; i++) {
+      var sx = 22 + r() * 28, sy = 7 + r() * 4, len = 4 + r() * (sx < 26 || sx > 46 ? 30 : 8), dxs = (sx - 36) * 0.03;
+      for (var s = 0; s < len; s++) { var ppx = Math.round(sx + dxs * s + Math.sin(s * 0.5 + i) * 0.6), ppy = Math.round(sy + s); if (hw2(ppy) && Math.abs(ppx + 0.5 - 36) < hw2(ppy) - 1.5 && ppy > 14 && ppy < 40 && Math.abs(ppx - 36) < 9) continue; R(ppx, ppy, 1, 1, r() < 0.7 ? "#1a1614" : "#2e2724"); }
+    }
+    return { c: c, eyes: [eyeL, eyeR] };
+  }
+  // ---- the special seed's ending: found camcorder footage (three.js, loaded only now), then the letter
+  var THREE_URL = "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js", threeP = null;
+  function loadThree() {
+    if (window.THREE) return Promise.resolve(window.THREE);
+    if (threeP) return threeP;
+    threeP = new Promise(function (res, rej) {
+      var s = document.createElement("script"), to = setTimeout(function () { threeP = null; rej(new Error("timeout")); }, 9000);
+      s.src = THREE_URL; s.async = true; s.crossOrigin = "anonymous";
+      s.onload = function () { clearTimeout(to); if (window.THREE) res(window.THREE); else { threeP = null; rej(new Error("no THREE")); } };
+      s.onerror = function () { clearTimeout(to); threeP = null; s.remove(); rej(new Error("load")); };
+      document.head.appendChild(s);
+    });
+    return threeP;
+  }
+  // sound: a low drone, heartbeat thumps, a distorted burst
+  function ftSound() {
+    var a = SND.on ? ac() : null, nodes = [], out = null;
+    if (a) try {
+      out = a.createGain(); out.gain.value = 0.0001; var comp = a.createDynamicsCompressor(); out.connect(comp); comp.connect(a.destination);
+      out.gain.exponentialRampToValueAtTime(0.5, a.currentTime + 2);
+      [41, 61.7, 82.3].forEach(function (f, i) { var o = a.createOscillator(), g = a.createGain(); o.type = i ? "triangle" : "sine"; o.frequency.value = f; g.gain.value = i ? 0.05 : 0.12; o.connect(g); g.connect(out); o.start(); nodes.push(o); });
+      var n = a.createBufferSource(), nf = a.createBiquadFilter(), ng = a.createGain(); n.buffer = noiseBuf(a); n.loop = true; nf.type = "lowpass"; nf.frequency.value = 380; ng.gain.value = 0.05;
+      n.connect(nf); nf.connect(ng); ng.connect(out); n.start(); nodes.push(n);
+    } catch (e) { a = null; }
+    return {
+      thump: function (v) {
+        if (!a) return;
+        [0, 0.17].forEach(function (d, i) {
+          var t = a.currentTime + d, o = a.createOscillator(), g = a.createGain(); o.type = "sine";
+          o.frequency.setValueAtTime(i ? 58 : 66, t); o.frequency.exponentialRampToValueAtTime(34, t + 0.16);
+          g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime((i ? 0.5 : 0.75) * v, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+          o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.3);
+        });
+      },
+      burst: function (soft) {
+        if (!a) return;
+        var t = a.currentTime, n = a.createBufferSource(), o = a.createOscillator(), ws = a.createWaveShaper(), g = a.createGain(), cu = new Float32Array(1024);
+        for (var i = 0; i < 1024; i++) { var v = i / 511.5 - 1; cu[i] = Math.tanh(v * 9); }
+        ws.curve = cu; n.buffer = noiseBuf(a); o.type = "sawtooth"; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.8);
+        g.gain.setValueAtTime(soft ? 0.12 : 0.4, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (soft ? 0.4 : 0.9));
+        n.connect(ws); o.connect(ws); ws.connect(g); g.connect(a.destination); n.start(t); n.stop(t + 1); o.start(t); o.stop(t + 1);
+      },
+      stop: function () {
+        if (!a) return; var t = a.currentTime;
+        try { out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); } catch (e) { /* gone */ }
+        nodes.forEach(function (x) { try { x.stop(t + 0.35); } catch (e) { /* gone */ } }); a = null;
+      }
+    };
+  }
+  var FT = null;
+  function footage() {
+    if (FT) return;
+    var o = el("div", "e4"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись с камеры");
+    o.innerHTML = '<div class="e4-view"></div><canvas class="e4-fx" aria-hidden="true"></canvas>' +
+      '<div class="e4-osd" aria-hidden="true"><span class="e4-rec"><i></i>REC</span><span class="e4-ts"></span><span class="e4-bat">▮▮▯</span><span class="e4-tc"></span></div>' +
+      '<button class="e4-x" type="button" aria-label="Пропустить">✕</button>';
+    document.body.appendChild(o); document.body.classList.add("e2-lock");
+    var view = o.querySelector(".e4-view"), fxc = o.querySelector(".e4-fx"), fx = fxc.getContext("2d"), ts = o.querySelector(".e4-ts"), tc = o.querySelector(".e4-tc");
+    // timeline (s): lab → turn to the portal → zoom → the cut → black → the letter
+    var TL = RM ? { turn: 3, zoom: 4, cut: 6.5, black: 7.1, end: 7.6 } : { turn: 6.2, zoom: 8.2, cut: 13, black: 14, end: 15 };
+    var snd = ftSound(), t0 = 0, raf = 0, done = false, beatN = -1, flashed = false, burst = false, impl = null;
+    var SEEN = drawSeen().c, FREEZE = null;
+    try { var fz = new URLSearchParams(location.search).get("ft"); if (seeHim() && fz) FREEZE = Math.max(0, parseFloat(fz) || 0); } catch (e) { /* old browser */ }   // owner preview: ?seehim=1&ft=4 holds that moment
+    FT = { o: o };
+    function osd(t) {
+      var s = 11 * 3600 + 47 * 60 + 3 + Math.floor(t);
+      ts.textContent = "PM " + ("0" + Math.floor(s / 3600 % 12)).slice(-2) + ":" + ("0" + Math.floor(s / 60 % 60)).slice(-2) + ":" + ("0" + s % 60).slice(-2) + "  ░░.░░.19░░";
+      tc.textContent = "SP  0:" + ("0" + (12 + Math.floor(t / 60))).slice(-2) + ":" + ("0" + Math.floor(t % 60)).slice(-2);
+    }
+    function fsize() { fxc.width = Math.ceil(innerWidth / 2); fxc.height = Math.ceil(innerHeight / 2); if (impl && impl.size) impl.size(); }
+    fsize(); addEventListener("resize", fsize);
+    // the 2D layer on top: the flash frame, the tear and the black
+    function overlay(t) {
+      var W = fxc.width, H = fxc.height; fx.clearRect(0, 0, W, H);
+      if (t >= TL.cut && t < TL.cut + 0.07 && !RM && FREEZE == null) {     // one frame of the face that was scratched out
+        var k = Math.min(W / 72, H / 112) * 1.25; fx.imageSmoothingEnabled = false; fx.fillStyle = "#000"; fx.fillRect(0, 0, W, H);
+        fx.drawImage(SEEN, (W - 72 * k) / 2, (H - 112 * k) / 2 + H * 0.12, 72 * k, 112 * k); flashed = true;
+      }
+      if (t >= TL.black) { fx.fillStyle = "#000"; fx.fillRect(0, 0, W, H); if (!RM) { fx.fillStyle = "rgba(255,255,255,.06)"; for (var n = 0; n < 120; n++) fx.fillRect(Math.random() * W | 0, Math.random() * H | 0, 1, 1); } }
+    }
+    function step(now) {
+      if (done) return;
+      if (!t0) t0 = now;
+      var t = FREEZE != null ? FREEZE : (now - t0) / 1000;
+      if (t >= TL.end) return finish();
+      // heartbeat once the portal is in view
+      if (t > TL.turn) { var bn = Math.floor((t - TL.turn) / 0.86); if (bn !== beatN) { beatN = bn; snd.thump(Math.min(1, 0.4 + (t - TL.turn) / 6)); } }
+      if (t >= TL.cut && !burst) { burst = true; snd.burst(RM); }
+      if (impl) impl.frame(t, TL);
+      overlay(t); osd(t);
+      o.classList.toggle("e4-black", t >= TL.black);
+      raf = requestAnimationFrame(step);
+    }
+    function finish() {
+      if (done) return; done = true; cancelAnimationFrame(raf); snd.stop(); if (impl) impl.dispose();
+      removeEventListener("resize", fsize); document.removeEventListener("keydown", onKey);
+      FT = null; o.remove(); letter();
+    }
+    var onKey = function (e) { if (e.key === "Escape") finish(); };
+    o.querySelector(".e4-x").addEventListener("click", function (e) { e.stopPropagation(); finish(); });
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { o.classList.add("on"); o.focus(); });
+    var go = function (m) { if (done) { if (m) m.dispose(); return; } impl = m; impl.size(); raf = requestAnimationFrame(step); };
+    loadThree().then(function (T) { var m; try { m = lab3d(T, view); } catch (e) { m = null; } go(m || lab2d(view)); }, function () { go(lab2d(view)); });
+    return { finish: finish, seen: function () { return flashed; } };
+  }
+
+  // ---- the 3D lab: concrete, cables, a flickering lamp, dust, monitors; the faceless one at the console; the portal with the heart
+  function lab3d(T, host) {
+    var R = new T.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    var DPR = Math.min(1.5, window.devicePixelRatio || 1);
+    R.setPixelRatio(DPR); R.shadowMap.enabled = true; R.shadowMap.type = T.PCFSoftShadowMap;
+    host.appendChild(R.domElement);
+    var scene = new T.Scene(); scene.background = new T.Color(0x020203); scene.fog = new T.FogExp2(0x040506, 0.085);
+    var cam = new T.PerspectiveCamera(55, 1, 0.05, 60);
+    var RT = new T.WebGLRenderTarget(4, 4, { type: T.HalfFloatType });
+    var dispose = [];
+    function canvasTex(w, h, fn, rep) {
+      var c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h);
+      var t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; if (rep) t.repeat.set(rep[0], rep[1]); t.colorSpace = T.SRGBColorSpace; dispose.push(t); return t;
+    }
+    var concrete = function (x, w, h) {
+      x.fillStyle = "#6d6a66"; x.fillRect(0, 0, w, h);
+      for (var i = 0; i < 9000; i++) { var v = 70 + Math.random() * 60 | 0; x.fillStyle = "rgba(" + v + "," + v + "," + (v - 4) + "," + (0.1 + Math.random() * 0.25) + ")"; x.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); }
+      for (i = 0; i < 40; i++) { x.fillStyle = "rgba(20,18,16," + Math.random() * 0.25 + ")"; x.beginPath(); x.ellipse(Math.random() * w, Math.random() * h, 8 + Math.random() * 50, 4 + Math.random() * 30, Math.random() * 3, 0, 7); x.fill(); }
+      x.strokeStyle = "rgba(30,28,26,.6)"; x.lineWidth = 2; for (i = 0; i < 4; i++) { x.beginPath(); x.moveTo(0, i * h / 4 + 1); x.lineTo(w, i * h / 4 + 1); x.stroke(); }
+    };
+    var M = function (o) { var m = new T.MeshStandardMaterial(o); dispose.push(m); return m; };
+    var add = function (geo, mat, pos, rot, sh) { var m = new T.Mesh(geo, mat); if (pos) m.position.set(pos[0], pos[1], pos[2]); if (rot) m.rotation.set(rot[0], rot[1], rot[2]); m.castShadow = sh !== 0; m.receiveShadow = true; dispose.push(geo); return m; };
+    var wallM = M({ map: canvasTex(256, 256, concrete, [4, 2]), roughness: 0.95, metalness: 0 });
+    var floorM = M({ map: canvasTex(256, 256, concrete, [6, 6]), roughness: 0.8, metalness: 0.05, color: 0x8a8580 });
+    // room
+    var room = add(new T.BoxGeometry(9, 4.2, 8.5), wallM, [-0.5, 2.1, -1.4], null, 0); room.material = [wallM, wallM, wallM, floorM, wallM, wallM]; room.geometry.scale(-1, 1, 1); scene.add(room);
+    // pipes and cables
+    var pipeM = M({ color: 0x2a2724, roughness: 0.5, metalness: 0.7 }), cabM = M({ color: 0x0b0b0b, roughness: 0.6 });
+    for (var i = 0; i < 3; i++) scene.add(add(new T.CylinderGeometry(0.07 + i * 0.02, 0.07 + i * 0.02, 9, 10), pipeM, [-2 + i * 0.35, 3.9 - i * 0.1, -1], [0, 0, Math.PI / 2]));
+    var cable = function (pts, r) { var c = new T.CatmullRomCurve3(pts.map(function (p) { return new T.Vector3(p[0], p[1], p[2]); })); scene.add(add(new T.TubeGeometry(c, 48, r, 6), cabM)); };
+    cable([[-3, 4, -2.2], [-1.5, 2.6, -2.1], [0, 3.4, -2.0], [1.6, 2.5, -2.2], [3, 4, -2.3]], 0.025);
+    cable([[-2.4, 4, -1.4], [-1.2, 3.1, -1.6], [0.2, 3.7, -1.7]], 0.02);
+    cable([[1.4, 0.02, -1.8], [0.4, 0.02, -0.4], [-1.4, 0.03, 0.3], [-2.6, 0.02, -1.4], [-3.3, 0.02, -2.6]], 0.03);
+    cable([[1.0, 0.9, -2.0], [1.3, 0.3, -1.95], [1.6, 0.02, -1.6], [2.6, 0.02, -0.6]], 0.022);
+    // console + monitors
+    var metal = M({ color: 0x1d1f21, roughness: 0.55, metalness: 0.6 });
+    scene.add(add(new T.BoxGeometry(2.2, 0.95, 0.8), metal, [0.8, 0.475, -1.9]));
+    scene.add(add(new T.BoxGeometry(2.2, 0.06, 0.55), M({ color: 0x111214, roughness: 0.4, metalness: 0.5 }), [0.8, 0.97, -1.7], [0.25, 0, 0]));
+    var scrC = document.createElement("canvas"); scrC.width = 128; scrC.height = 96; var scx = scrC.getContext("2d");
+    var scrT = new T.CanvasTexture(scrC); scrT.colorSpace = T.SRGBColorSpace; dispose.push(scrT);
+    function paintScr(t) {
+      scx.fillStyle = "#020806"; scx.fillRect(0, 0, 128, 96);
+      for (var y = 0; y < 12; y++) { scx.fillStyle = y === (t * 3 | 0) % 12 ? "#d0fff0" : "#3fbf9a"; var len = 20 + ((Math.sin(y * 7.1 + (t * 2 | 0)) + 1) * 45 | 0); for (var x0 = 4; x0 < len; x0 += 6) if (Math.sin(x0 * 3.3 + y + (t | 0)) > -0.4) scx.fillRect(x0, 4 + y * 7, 4, 4); }
+      scx.strokeStyle = "#ff3a4a"; scx.beginPath(); for (var x1 = 0; x1 < 128; x1++) { var yy = 82 - Math.abs(Math.sin(x1 * 0.2 + t * 6)) * 8 * (x1 % 30 < 6 ? 1.6 : 0.3); x1 ? scx.lineTo(x1, yy) : scx.moveTo(x1, yy); } scx.stroke();
+      scrT.needsUpdate = true;
+    }
+    paintScr(0);
+    var scrM = new T.MeshBasicMaterial({ map: scrT, color: 0x9ad8c4 }); dispose.push(scrM);
+    [[0.15, 1.42, -2.12, 0.25], [0.85, 1.48, -2.2, 0], [1.55, 1.42, -2.12, -0.25]].forEach(function (p) {
+      var g = new T.Group(); g.position.set(p[0], p[1], p[2]); g.rotation.y = p[3];
+      g.add(add(new T.BoxGeometry(0.62, 0.48, 0.32), metal, [0, 0, -0.17]));
+      var sm = add(new T.PlaneGeometry(0.54, 0.4), scrM, [0, 0, 0.001], null, 0); sm.castShadow = false; g.add(sm); scene.add(g);
+    });
+    var monL = new T.PointLight(0x5fe0c0, 2.2, 3.2, 2); monL.position.set(0.85, 1.4, -1.75); scene.add(monL);
+    // the lamp: a cone shade, a bulb, a shadowing spotlight that flickers
+    var lamp = new T.Group(); lamp.position.set(0.55, 3.0, -1.05); scene.add(lamp);
+    lamp.add(add(new T.CylinderGeometry(0.008, 0.008, 1.2, 4), cabM, [0, 0.6, 0]));
+    lamp.add(add(new T.ConeGeometry(0.26, 0.24, 20, 1, true), M({ color: 0x2b2d2a, roughness: 0.6, metalness: 0.6, side: T.DoubleSide }), [0, -0.05, 0]));
+    var bulbM = new T.MeshBasicMaterial({ color: 0xfff1c8 }); dispose.push(bulbM);
+    lamp.add(add(new T.SphereGeometry(0.035, 12, 8), bulbM, [0, -0.1, 0], null, 0));
+    var spot = new T.SpotLight(0xffe2b0, 22, 9, 0.62, 0.6, 1.6); spot.position.set(0.55, 2.86, -1.05); spot.target.position.set(0.75, 0, -1.4);
+    spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0008; scene.add(spot); scene.add(spot.target);
+    scene.add(new T.HemisphereLight(0x1a2030, 0x050403, 0.25));
+    // dust in the light
+    var DN = 700, dpos = new Float32Array(DN * 3);
+    for (i = 0; i < DN; i++) { var rr = Math.random() * 0.9, an = Math.random() * 6.283, hy = Math.random() * 2.8; dpos[i * 3] = 0.6 + Math.cos(an) * rr * (hy / 2.8 + 0.2); dpos[i * 3 + 1] = hy; dpos[i * 3 + 2] = -1.2 + Math.sin(an) * rr * (hy / 2.8 + 0.2); }
+    var dg = new T.BufferGeometry(); dg.setAttribute("position", new T.BufferAttribute(dpos, 3)); dispose.push(dg);
+    var dm = new T.PointsMaterial({ color: 0xffe9c0, size: 0.006, transparent: true, opacity: 0.4, depthWrite: false, blending: T.AdditiveBlending }); dispose.push(dm);
+    scene.add(new T.Points(dg, dm));
+    // the faceless one: very tall, very thin, hunched over the console, hands never still
+    var coatM = M({ color: 0xc9c7bf, roughness: 0.88 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32, metalness: 0 }), darkM = M({ color: 0x141414, roughness: 0.8 });
+    var fig = new T.Group(); fig.position.set(0.72, 0, -1.02); fig.rotation.y = Math.PI + 0.55; scene.add(fig);
+    var lathe = function (pts, mat, sx, sz) { var g = new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), 28); g.scale(sx || 1, 1, sz || 0.72); return add(g, mat); };
+    fig.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), darkM, [-0.1, 0.5, 0])); fig.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), darkM, [0.1, 0.5, 0]));
+    fig.add(lathe([[0.001, 0.42], [0.34, 0.42], [0.3, 0.7], [0.25, 1.02], [0.001, 1.06]], coatM));
+    var torso = new T.Group(); torso.position.y = 1.02; torso.rotation.x = 0.42; fig.add(torso);
+    torso.add(lathe([[0.001, -0.05], [0.25, -0.04], [0.22, 0.3], [0.25, 0.68], [0.2, 0.78], [0.06, 0.82], [0.001, 0.82]], coatM));
+    var neck = new T.Group(); neck.position.y = 0.8; neck.rotation.x = 0.25; torso.add(neck);
+    neck.add(add(new T.CylinderGeometry(0.04, 0.05, 0.26, 10), skinM, [0, 0.12, 0]));
+    var head = add(new T.SphereGeometry(1, 32, 24), skinM, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
+    var arms = [-1, 1].map(function (sd) {
+      var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
+      sh.add(add(new T.CapsuleGeometry(0.05, 0.42, 4, 10), coatM, [0, -0.25, 0]));
+      var el2 = new T.Group(); el2.position.y = -0.5; sh.add(el2);
+      el2.add(add(new T.CapsuleGeometry(0.042, 0.4, 4, 10), coatM, [0, -0.23, 0]));
+      var hand = new T.Group(); hand.position.y = -0.47; el2.add(hand);
+      hand.add(add(new T.BoxGeometry(0.06, 0.09, 0.025), skinM, [0, -0.04, 0]));
+      var fingers = [];
+      for (var f = 0; f < 4; f++) { var fg = new T.Group(); fg.position.set(-0.024 + f * 0.016, -0.085, 0); fg.add(add(new T.CapsuleGeometry(0.006, 0.1 - Math.abs(f - 1.5) * 0.012, 2, 5), skinM, [0, -0.055, 0])); hand.add(fg); fingers.push(fg); }
+      return { sh: sh, el: el2, hand: hand, f: fingers, sd: sd };
+    });
+    // the portal: a glowing ring, a swirling inside, the heart beating in the middle
+    var portal = new T.Group(); portal.position.set(-3.3, 1.75, -2.6); scene.add(portal);
+    var ringM = new T.MeshStandardMaterial({ color: 0x220405, emissive: 0xd8200f, emissiveIntensity: 1.6, roughness: 0.3, metalness: 0.4 }); dispose.push(ringM);
+    var ring = add(new T.TorusGeometry(1.15, 0.085, 20, 96), ringM, null, null, 0); portal.add(ring);
+    var ring2 = add(new T.TorusGeometry(1.32, 0.022, 8, 96), ringM, null, null, 0); portal.add(ring2);
+    var swM = new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: { uT: { value: 0 } },
+      vertexShader: "varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}",
+      fragmentShader: "varying vec2 vUv;uniform float uT;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}" +
+        "float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}" +
+        "void main(){vec2 p=vUv-0.5;float r=length(p)*2.0,a=atan(p.y,p.x);float s=a*3.0/6.2832+r*2.2-uT*0.35;" +
+        "float v=n(vec2(s*6.0,r*5.0-uT*0.6))*0.6+n(vec2(s*13.0,r*9.0))*0.4;float m=smoothstep(1.0,0.55,r);" +
+        "vec3 c=mix(vec3(0.25,0.0,0.04),vec3(0.9,0.12,0.08),v*v)*m*(0.3+0.4*v)*smoothstep(0.08,0.5,r);c+=vec3(0.5,0.03,0.06)*smoothstep(0.85,1.0,r)*m*1.5;gl_FragColor=vec4(c,1.0);}" });
+    dispose.push(swM);
+    var disc = add(new T.CircleGeometry(1.12, 64), swM, [0, 0, -0.02], null, 0); disc.castShadow = false; portal.add(disc);
+    var heartT = new T.TextureLoader().load("/site/img/heart.png"); heartT.colorSpace = T.SRGBColorSpace; dispose.push(heartT);
+    var heartM = new T.MeshBasicMaterial({ map: heartT, transparent: true, color: 0xffd0d0, depthWrite: false }); dispose.push(heartM);
+    var heart = add(new T.PlaneGeometry(0.5, 0.45), heartM, [0, 0, 0.05], null, 0); heart.castShadow = false; portal.add(heart);
+    var pl = new T.PointLight(0xff2a1a, 6, 9, 1.6); pl.position.set(-3.0, 1.75, -2.1); scene.add(pl);
+    // post: camcorder (aberration, grain, tracking, scanlines, focus, vignette, tone curve)
+    var post = new T.ShaderMaterial({ uniforms: { tD: { value: RT.texture }, uT: { value: 0 }, uAb: { value: 0.006 }, uGr: { value: 0.12 }, uBl: { value: 0 }, uTear: { value: 0 }, uRed: { value: 0 }, uExp: { value: 1 }, uRes: { value: new T.Vector2(4, 4) } },
+      vertexShader: "varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}",
+      fragmentShader: "varying vec2 vUv;uniform sampler2D tD;uniform float uT,uAb,uGr,uBl,uTear,uRed,uExp;uniform vec2 uRes;" +
+        "float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}" +
+        "vec3 sp(vec2 uv){vec2 o=uBl/uRes;vec3 c=texture2D(tD,uv).rgb*0.36;c+=texture2D(tD,uv+vec2(o.x,0.0)).rgb*0.16;c+=texture2D(tD,uv-vec2(o.x,0.0)).rgb*0.16;c+=texture2D(tD,uv+vec2(0.0,o.y)).rgb*0.16;c+=texture2D(tD,uv-vec2(0.0,o.y)).rgb*0.16;return c;}" +
+        "void main(){vec2 uv=vUv;float fr=floor(uT*24.0);" +
+        "float bd=step(0.982-uTear*0.4,h(vec2(floor(uv.y*48.0),fr)));uv.x+=bd*(h(vec2(fr,uv.y))-0.5)*(0.025+uTear*0.2);" +
+        "uv.x+=sin(uv.y*30.0+uT*2.0)*0.0009;float trk=smoothstep(0.0,0.02,abs(fract(uv.y-uT*0.11)-0.5))*0.0+0.0;" +
+        "vec2 d=uv-0.5;float ab=uAb*(0.5+dot(d,d)*3.0);vec3 c=vec3(sp(uv+d*ab).r,sp(uv).g,sp(uv-d*ab).b)*uExp;" +
+        "c=(c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14);c=pow(clamp(c,0.0,1.0),vec3(1.0/2.2));" +
+        "c=mix(c,vec3(dot(c,vec3(0.3,0.59,0.11))),0.25)*vec3(1.0,1.03,0.95);" +
+        "float ln=step(0.995,h(vec2(floor(uv.y*260.0),fr)));c+=ln*0.22;c+=step(0.9985,h(vec2(floor(uv.y*90.0),fr*1.7)))*vec3(0.5);" +
+        "c*=0.9+0.1*sin(uv.y*uRes.y*1.6);c+=(h(uv*uRes+fract(uT*7.0)*91.0)-0.5)*uGr;" +
+        "c*=smoothstep(0.95,0.28,length(d*vec2(1.0,0.9)));c=mix(c,vec3(c.r*1.5+0.05,c.g*0.25,c.b*0.3),uRed);gl_FragColor=vec4(c,1.0);}",
+      depthTest: false, depthWrite: false });
+    dispose.push(post);
+    var pScene = new T.Scene(), pCam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), pq = new T.Mesh(new T.PlaneGeometry(2, 2), post); pScene.add(pq); dispose.push(pq.geometry);
+    // the scare: the same smooth head, right in the lens
+    var sc = new T.Group(); scene.add(sc); sc.visible = false;
+    var sHead = add(new T.SphereGeometry(1, 40, 30), skinM, [0, 0, 0], null, 0); sHead.scale.set(0.12, 0.19, 0.14); sc.add(sHead);
+    sc.add(add(new T.CylinderGeometry(0.04, 0.05, 0.3, 10), skinM, [0, -0.3, 0], null, 0));
+    var sLight = new T.PointLight(0xffffff, 0, 2, 2); scene.add(sLight);
+    var V = new T.Vector3(), look = new T.Vector3(), camA = new T.Vector3(-0.75, 1.58, 2.4), figHead = new T.Vector3(0.55, 1.95, -1.25), portC = portal.position.clone();
+    function size() {
+      var w = host.clientWidth || innerWidth, h = host.clientHeight || innerHeight;
+      R.setSize(w, h, false); R.domElement.style.width = w + "px"; R.domElement.style.height = h + "px";
+      RT.setSize(Math.round(w * DPR), Math.round(h * DPR)); post.uniforms.uRes.value.set(w * DPR, h * DPR);
+      cam.aspect = w / h; cam.updateProjectionMatrix();
+    }
+    var sm = function (a, b, v) { v = Math.max(0, Math.min(1, (v - a) / (b - a))); return v * v * (3 - 2 * v); };
+    var flick = 1;
+    function frame(t, TL) {
+      var u = post.uniforms, still = RM ? 0 : 1;
+      u.uT.value = t; swM.uniforms.uT.value = t;
+      if ((t * 30 | 0) % 3 === 0) paintScr(t);
+      // the lamp flickers
+      if (!RM && Math.random() < 0.06) flick = Math.random() < 0.35 ? 0.08 : 0.6 + Math.random() * 0.4; else flick += (1 - flick) * 0.2;
+      spot.intensity = 22 * (RM ? 1 : flick); bulbM.color.setScalar(RM ? 1 : 0.3 + flick * 0.7);
+      lamp.rotation.z = Math.sin(t * 0.7) * 0.03 * still;
+      // dust drifts
+      var pa = dg.attributes.position.array; for (var i = 1; i < pa.length; i += 3) { pa[i] -= 0.0015 * still; if (pa[i] < 0) pa[i] = 2.8; } dg.attributes.position.needsUpdate = still === 1;
+      // the hands at work: restless, wrong
+      arms.forEach(function (a, k) {
+        var ph = t * (3.1 + k * 0.7) + k * 2;
+        a.sh.rotation.x = -0.95 + Math.sin(ph * 0.5) * 0.08 * still; a.sh.rotation.z = a.sd * 0.12;
+        a.el.rotation.x = -0.75 + Math.sin(ph) * 0.18 * still + (Math.sin(t * 13 + k) > 0.92 ? 0.12 : 0) * still;
+        a.hand.rotation.x = -0.3 + Math.sin(ph * 1.7) * 0.25 * still; a.hand.rotation.z = Math.sin(ph * 0.9) * 0.3 * still;
+        a.f.forEach(function (fg, j) { fg.rotation.x = 0.4 + Math.sin(t * 9 + j * 1.3 + k) * 0.6 * still; });
+      });
+      var tw = !RM && Math.sin(t * 1.3) > 0.97 ? 0.25 : 0;                                  // an occasional jerk of the head
+      neck.rotation.z = Math.sin(t * 0.6) * 0.08 * still + tw; neck.rotation.y = sm(3.6, 4.4, t) * 0.5 * (1 - sm(5.2, 6, t)) * (RM ? 0 : 1);
+      // the heart in the portal
+      var p = (t % 0.86) / 0.86, b = Math.exp(-Math.pow((p - 0.05) / 0.05, 2)) * 0.16 + Math.exp(-Math.pow((p - 0.24) / 0.05, 2)) * 0.09;
+      heart.scale.setScalar(1 + (RM ? 0 : b)); pl.intensity = (5 + b * 40) * (0.12 + 0.88 * sm(TL.turn - 0.5, TL.turn + 1.5, t)); ringM.emissiveIntensity = 1.3 + b * 3.5;
+      ring.rotation.z = t * 0.2; ring2.rotation.z = -t * 0.33; ring2.position.x = (!RM && Math.random() < 0.04) ? 0.05 : 0;
+      // the camera: handheld breathing, a turn, a slow zoom, the cut
+      var br = still * 1, sx = Math.sin(t * 0.9) * 0.02 * br + (Math.random() - 0.5) * 0.006 * br, sy = Math.sin(t * 1.3) * 0.015 * br + (Math.random() - 0.5) * 0.005 * br;
+      var turn = sm(TL.turn, TL.turn + 1.9, t), zoom = sm(TL.zoom, TL.cut - 0.2, t);
+      cam.position.copy(camA).lerp(V.set(-1.6, 1.68, 0.9), turn * 0.6).lerp(V.set(-2.75, 1.74, -1.0), zoom * 0.45);
+      cam.position.x += sx; cam.position.y += sy;
+      look.copy(figHead).lerp(portC, turn); look.x += sx * 6; look.y += sy * 6;
+      cam.fov = 52 - zoom * 8; cam.updateProjectionMatrix(); cam.lookAt(look);
+      cam.rotation.z += Math.sin(t * 0.7) * 0.012 * br;
+      u.uBl.value = RM ? 0 : (t < 1.6 ? 3.2 * (1 - sm(0.2, 1.6, t)) : 0) + (turn > 0 && turn < 1 ? 4 * Math.sin(turn * Math.PI) : 0) + (t > 4.8 && t < 5.6 ? 1.8 * Math.sin((t - 4.8) / 0.8 * Math.PI) : 0);
+      u.uAb.value = 0.006 + zoom * 0.006; u.uRed.value = zoom * 0.15; u.uExp.value = 1.15; u.uGr.value = 0.13; u.uTear.value = 0;
+      if (t >= TL.cut) {                       // hard cut: it is right here
+        var k2 = t - TL.cut; sc.visible = true; fig.visible = true;
+        cam.fov = 60; cam.updateProjectionMatrix(); cam.position.set(0, 1.6, 0); cam.rotation.set(0, 0, RM ? 0 : (Math.random() - 0.5) * 0.06);
+        sc.position.set((RM ? 0 : (Math.random() - 0.5) * 0.02), 1.6 + (RM ? 0 : (Math.random() - 0.5) * 0.02), -0.52 + Math.min(0.1, k2 * 0.5));
+        sc.rotation.set(0.1, RM ? 0 : Math.max(0, 1.3 - k2 * 18), RM ? 0 : Math.sin(k2 * 40) * 0.05);
+        sLight.position.set(0.35, 1.9, -0.1); sLight.intensity = RM ? 0.8 : 0.9 + Math.random() * 0.9;
+        spot.intensity = 0; pl.intensity = 0; monL.intensity = 0.4;
+        u.uTear.value = RM ? 0 : 1; u.uAb.value = RM ? 0.01 : 0.05; u.uRed.value = RM ? 0.15 : 0.3; u.uGr.value = RM ? 0.15 : 0.3; u.uBl.value = 0;
+      }
+      R.setRenderTarget(RT); R.render(scene, cam); R.setRenderTarget(null); R.render(pScene, pCam);
+    }
+    return {
+      size: size, frame: frame,
+      dispose: function () { dispose.forEach(function (d) { try { d.dispose(); } catch (e) { /* gone */ } }); RT.dispose(); R.dispose(); try { R.forceContextLoss(); } catch (e) { /* gone */ } R.domElement.remove(); }
+    };
+  }
+  // ---- if three.js could not load: the same shots, flat
+  function lab2d(host) {
+    var c = document.createElement("canvas"); host.appendChild(c); var x = c.getContext("2d"), W = 0, H = 0;
+    function size() { W = c.width = Math.ceil(innerWidth / 2); H = c.height = Math.ceil(innerHeight / 2); c.style.width = innerWidth + "px"; c.style.height = innerHeight + "px"; }
+    function fig(cx, base, s) {
+      x.fillStyle = "#cfcac0"; x.beginPath(); x.ellipse(cx, base - 205 * s, 13 * s, 20 * s, 0.3, 0, 7); x.fill();
+      x.fillStyle = "#bdb9b0"; x.beginPath(); x.moveTo(cx - 22 * s, base - 170 * s); x.lineTo(cx + 26 * s, base - 165 * s); x.lineTo(cx + 36 * s, base - 40 * s); x.lineTo(cx - 34 * s, base - 40 * s); x.fill();
+      x.fillStyle = "#111"; x.fillRect(cx - 12 * s, base - 40 * s, 8 * s, 40 * s); x.fillRect(cx + 6 * s, base - 40 * s, 8 * s, 40 * s);
+    }
+    function frame(t, TL) {
+      var turn = Math.max(0, Math.min(1, (t - TL.turn) / 1.9)), zoom = Math.max(0, Math.min(1, (t - TL.zoom) / (TL.cut - TL.zoom)));
+      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#050505"; x.fillRect(0, 0, W, H);
+      var ox = -turn * W * 0.9 + (RM ? 0 : Math.sin(t) * 3), fl = RM || Math.random() > 0.06 ? 1 : 0.3;
+      x.translate(ox, RM ? 0 : Math.sin(t * 1.3) * 2);
+      var g = x.createRadialGradient(W * 0.6, H * 0.25, 4, W * 0.6, H * 0.6, H * 0.8); g.addColorStop(0, "rgba(255,226,170," + 0.35 * fl + ")"); g.addColorStop(1, "rgba(0,0,0,0)");
+      x.fillStyle = g; x.fillRect(0, 0, W, H); x.fillStyle = "#0e1a16"; x.fillRect(W * 0.42, H * 0.5, W * 0.4, H * 0.12); x.fillStyle = "#3fbf9a"; x.fillRect(W * 0.46, H * 0.42, W * 0.08, H * 0.07); x.fillRect(W * 0.6, H * 0.4, W * 0.1, H * 0.08);
+      fig(W * 0.58, H * 0.92, H / 260);
+      // the portal, to the left
+      var pc = -W * 0.3 + W * 0.9 + W * 0.0, py = H * 0.45, pr = H * (0.28 + zoom * 0.35);
+      x.save(); x.translate(-ox, 0); x.translate(-ox * 0 + (1 - turn) * -W, 0);
+      var rg = x.createRadialGradient(W / 2, py, pr * 0.2, W / 2, py, pr); rg.addColorStop(0, "rgba(255,60,30,.5)"); rg.addColorStop(0.85, "rgba(120,0,20,.6)"); rg.addColorStop(1, "rgba(255,40,24,1)");
+      x.fillStyle = rg; x.beginPath(); x.arc(W / 2, py, pr, 0, 7); x.fill();
+      if (HOK) { var b = 1 + (RM ? 0 : Math.max(0, Math.sin((t % 0.86) / 0.86 * Math.PI * 4)) * 0.1), hh = pr * 0.45 * b; x.drawImage(HIMG, W / 2 - hh * HIMG.width / HIMG.height / 2, py - hh / 2, hh * HIMG.width / HIMG.height, hh); }
+      x.restore(); void pc;
+      if (t >= TL.cut) { x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#000"; x.fillRect(0, 0, W, H); x.fillStyle = "#d4cfc6"; x.beginPath(); x.ellipse(W / 2 + (RM ? 0 : (Math.random() - 0.5) * 8), H * 0.55, W * 0.32, H * 0.6, 0, 0, 7); x.fill(); }
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      if (!RM) { x.fillStyle = "rgba(255,255,255,.07)"; for (var n = 0; n < 300; n++) x.fillRect(Math.random() * W | 0, Math.random() * H | 0, 1, 1); }
+      var v = x.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.85)"); x.fillStyle = v; x.fillRect(0, 0, W, H);
+    }
+    return { size: size, frame: frame, dispose: function () { c.remove(); } };
+  }
+  // ---- the letter: «ПИСЬМО №∞»
+  var LETTER = "TO MY FAMILY. I DO NOT SLEEP ANYMORE. WHEN I DO, I DREAM OF THE GATE. A RED HEART IS BEATING INSIDE IT. IT CALLS ME BY A NAME I DO NOT REMEMBER. MY HANDS SHAKE. SOMETIMES I FALL AND WAKE UP HOURS LATER ON THE LAB FLOOR. THE OTHERS SAY I SPEAK IN SYMBOLS NOW. I THINK I AM BECOMING SOMETHING ELSE. IF I DIE, DO NOT LOOK FOR MY BODY. LOOK FOR THE LIGHT BEHIND THE GATE. - D.";
+  var LTR = null;
+  function letter() {
+    if (LTR) return;
+    lsSet(K_SEEN, "1"); lsSet(K_EYE, "1"); footMark();
+    var o = el("div", "e3 e3-letter"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Письмо №∞");
+    o.innerHTML = '<div class="e3-red" aria-hidden="true"></div><div class="e3-card e5-card"><p class="e3-head">ПИСЬМО №∞</p>' +
+      '<div class="e3-cipher e5-text" aria-label="Письмо шифром Врат">' + lineSvg(LETTER, "e3-g e5-g") + "</div>" +
+      '<p class="e3-ru">Письмо семье. Отправитель неизвестен.</p>' +
+      '<p class="e3-row"><span class="e3-k">ОТ</span><span class="e3-name">██████</span></p>' +
+      '<button class="e5-x" type="button" aria-label="Закрыть">✕</button></div>';
+    document.body.appendChild(o); document.body.classList.add("e2-lock");
+    var openedAt = performance.now();
+    LTR = { o: o };
+    var close = function () {
+      if (!LTR) return; LTR = null; document.removeEventListener("keydown", onKey); document.body.classList.remove("e2-lock");
+      o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 700);
+    };
+    var onKey = function (e) { if (e.key === "Escape") close(); };
+    o.addEventListener("click", function (e) { if (e.target.closest(".e5-x")) return close(); if (performance.now() - openedAt < 600) return; if (!e.target.closest(".e3-card")) close(); });
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { o.classList.add("on"); o.focus(); });
+  }
   var DOS = null;
   function dossier() {
     if (DOS) return;
@@ -1031,10 +1589,10 @@
     var fig = o.querySelector(".e3-fig"), nm = o.querySelector(".e3-name"), noise = o.querySelector(".e3-noise"), nx = noise.getContext("2d");
     var seed = 9001, tick = 0, timer = 0, raf = 0, NAMES = ["██████", "█▓████", "██ ▒██", "▓█████", "░█▓█▒█", "██████"];
     drawFigure(fig, seed);
-    function nsize() { noise.width = Math.ceil(innerWidth / 3); noise.height = Math.ceil(innerHeight / 3); }
+    function nsize() { noise.width = Math.ceil(innerWidth / 3); noise.height = Math.ceil(innerHeight / 3); if (RM) static_(); }
     function static_() {
-      var w = noise.width, h = noise.height, img = nx.createImageData(w, h), d = img.data;
-      for (var i = 0; i < d.length; i += 4) { var v = Math.random() < 0.5 ? 0 : Math.random() * 70; d[i] = v * 1.25; d[i + 1] = v * 0.9; d[i + 2] = v * 0.9; d[i + 3] = 255; }
+      var w = noise.width, h = noise.height, img = nx.createImageData(w, h), d = img.data, rr = 1.25, gg = 0.9;
+      for (var i = 0; i < d.length; i += 4) { var v = Math.random() < 0.5 ? 0 : Math.random() * 70; d[i] = v * rr; d[i + 1] = v * gg; d[i + 2] = v * gg; d[i + 3] = 255; }
       nx.putImageData(img, 0, 0);
     }
     nsize(); static_();
@@ -1049,6 +1607,7 @@
     DOS = { o: o };
     if (!RM) frame();
     humStart();
+    var openedAt = performance.now();
     var close = function () {
       if (!DOS) return; DOS = null; clearTimeout(timer); cancelAnimationFrame(raf); humStop();
       document.removeEventListener("keydown", onKey); removeEventListener("resize", nsize);
@@ -1056,19 +1615,26 @@
       o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 700);
     };
     var onKey = function (e) { if (e.key === "Escape") close(); };
-    o.addEventListener("click", function (e) { if (!e.target.closest(".e3-card")) close(); });
+    o.addEventListener("click", function (e) { if (performance.now() - openedAt < 600) return; if (!e.target.closest(".e3-card")) close(); });   // the opening tap never closes it
     document.addEventListener("keydown", onKey); addEventListener("resize", nsize);
     document.body.classList.add("e2-lock");
     requestAnimationFrame(function () { o.classList.add("on"); o.focus(); });
   }
+  var EYE = '<svg class="e3-eg" viewBox="0 0 9 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M2 0h5v1H2zM1 1h1v1H1zM7 1h1v1H7zM0 2h1v1H0zM8 2h1v1H8zM1 3h1v1H1zM7 3h1v1H7zM2 4h5v1H2z" fill="currentColor"/><rect x="4" y="2" width="1" height="1" fill="#fff"/></svg>';
   function footMark() {
-    if (lsGet(K_SEEN) !== "1" || document.querySelector(".e3-mark")) return;
-    var f = document.querySelector(".foot"); if (!f) return;
-    var b = el("button", "e3-mark", glyphSvg("?", "e3-mg")); b.type = "button"; b.setAttribute("aria-label", "Запись №░░");
-    b.addEventListener("click", dossier);
-    f.appendChild(b);
+    if (lsGet(K_SEEN) !== "1") return;
+    var b = document.querySelector(".e3-mark");
+    if (!b) {
+      var f = document.querySelector(".foot"); if (!f) return;
+      b = el("button", "e3-mark", glyphSvg("?", "e3-mg")); b.type = "button"; b.setAttribute("aria-label", "Запись №░░");
+      b.addEventListener("click", function () { if (b.classList.contains("e3-eye")) letter(); else dossier(); });
+      f.appendChild(b);
+    }
+    if (lsGet(K_EYE) === "1" && !b.classList.contains("e3-eye")) { b.classList.add("e3-eye"); b.innerHTML = EYE; b.setAttribute("aria-label", "Письмо №∞"); }
   }
   footMark();
+  // owner preview: ?seehim=1&ft=<seconds> opens the special seed's footage frozen at that moment
+  try { if (seeHim() && new URLSearchParams(location.search).get("ft")) setTimeout(footage, 300); } catch (e) { /* old browser */ }
 
   // ---------------------------------------------------------------- start
   api("me").then(function (r) {

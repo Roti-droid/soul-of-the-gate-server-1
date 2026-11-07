@@ -226,9 +226,12 @@ body.e2-lock{overflow:hidden}
 .e2-x{position:absolute;z-index:5;top:10px;right:10px;background:none;border:0;color:#666;font:16px/1 var(--px);padding:12px;cursor:pointer}
 .e2-x:hover,.e2-x:focus-visible{color:#fff;outline:none}
 .e2.e2-dim .e2-hud,.e2.e2-dim .e2-bar{opacity:.25}
-.e2-file{display:flex;flex-direction:column;align-items:center;gap:12px;border:2px dashed #555;padding:16px 14px;background:#070707;max-width:92%}
+.e2-file{display:flex;flex-direction:column;align-items:center;gap:12px;border:2px dashed #555;padding:18px 18px;background:#070707;max-width:92%;min-width:min(260px,92%);cursor:pointer;touch-action:manipulation}
+.e2-file:hover{border-color:#8a2030}
+.e2-file *{pointer-events:none}
 .e2-fnum{margin:0;font-size:clamp(8px,2.4vw,11px);color:#ccc;letter-spacing:1px}
-.e2-q{background:none;border:0;padding:6px;cursor:pointer;color:#fff;animation:qPulse 1.8s ease-in-out infinite}
+.e2-q{background:none;border:0;padding:6px;cursor:pointer;color:#fff}
+.e2-q .e2-qg{animation:qPulse 1.8s ease-in-out infinite}
 .e2-q:focus-visible{outline:2px dashed #ff1e3c;outline-offset:4px}
 .e2-qg{width:40px;height:56px;fill:currentColor;display:block;filter:drop-shadow(-2px 0 0 rgba(255,30,60,.85)) drop-shadow(2px 0 0 rgba(60,240,255,.5))}
 @keyframes qPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.12);opacity:1;filter:drop-shadow(0 0 10px rgba(255,30,60,.6))}}
@@ -335,3 +338,53 @@ img{-webkit-user-drag:none;user-drag:none}
 .e2-hpx{height:50%;width:auto;filter:drop-shadow(0 0 6px rgba(255,255,255,.6))}
 @keyframes e2Beat{0%,100%{transform:scale(1)}7%{transform:scale(1.1)}14%{transform:scale(1)}25%{transform:scale(1.05)}33%{transform:scale(1)}}
 .e2-face{position:absolute;inset:0;width:100%;height:100%;z-index:4;display:block;background:#000;cursor:none}
+/* the special seed's footage: a camcorder tape */
+.e4{position:fixed;inset:0;z-index:62;background:#000;opacity:0;transition:opacity .25s;outline:none;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.e4.on{opacity:1}
+.e4-view,.e4-view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.e4-fx{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;pointer-events:none}
+.e4-osd{position:absolute;inset:0;pointer-events:none;font:clamp(10px,2.6vw,15px)/1 var(--px);color:#f2f2f2;text-shadow:2px 2px 0 #000,0 0 6px rgba(255,255,255,.35);letter-spacing:1px}
+.e4-osd span{position:absolute}
+.e4-rec{top:calc(18px + env(safe-area-inset-top));left:18px;display:flex;align-items:center;gap:8px}
+.e4-rec i{width:.8em;height:.8em;border-radius:50%;background:#ff1e1e;box-shadow:0 0 8px #f00;animation:recBlink 1s steps(1) infinite}
+@keyframes recBlink{50%{opacity:0}}
+.e4-bat{top:calc(18px + env(safe-area-inset-top));right:64px}
+.e4-ts{bottom:calc(20px + env(safe-area-inset-bottom));left:18px}
+.e4-tc{bottom:calc(46px + env(safe-area-inset-bottom));left:18px;opacity:.8}
+.e4.e4-black .e4-osd{opacity:.25}
+.e4-x{position:absolute;z-index:3;top:calc(6px + env(safe-area-inset-top));right:6px;background:none;border:0;color:#777;font:16px/1 var(--px);padding:14px;cursor:pointer;touch-action:manipulation}
+.e4-x:hover,.e4-x:focus-visible{color:#fff;outline:none}
+/* the letter */
+.e3-letter{background:radial-gradient(ellipse at center,#120b08 0%,#000 75%)}
+.e5-card{max-width:620px;max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;background:linear-gradient(180deg,rgba(38,28,20,.96),rgba(22,15,11,.97));border-color:#4a3626;box-shadow:0 0 0 1px #000,0 0 50px rgba(160,40,20,.25),inset 0 0 60px rgba(0,0,0,.55);padding:22px 22px 18px}
+.e5-card .e3-head{color:#b89a74;border-bottom-color:#4a3626;font-size:11px}
+.e5-text{border-color:#4a3626;border-top:0;margin-top:4px;padding-top:4px}
+.e5-g{fill:#e3cfab;filter:drop-shadow(0 0 2px rgba(255,120,60,.3))}
+.e5-card .e3-ru{color:#cdb796}
+.e5-card .e3-row{margin:12px 0 0}
+.e5-x{position:absolute;top:6px;right:6px;background:none;border:0;color:#7a6048;font:14px/1 var(--px);padding:12px;cursor:pointer}
+.e5-x:hover,.e5-x:focus-visible{color:#fff;outline:none}
+.e3-mark.e3-eye{color:#6a1220;opacity:1}
+.e3-eg{width:13px;height:7px;display:block}
+/* owner cabinet: the Gate cipher tool */
+.dc h3{margin-top:0}
+.dc-about{margin:0 0 14px;font-size:14px}
+.dc-lbl{display:block;font:10px/1.4 var(--px);text-transform:uppercase}
+.dc-lbl textarea{margin-top:8px;font-size:16px}
+.dc-note{font-size:13px;color:var(--dim);margin:8px 0 0;overflow-wrap:anywhere}
+.dc-prev{min-height:44px;margin:12px 0}
+.dc-pg{width:15px;height:21px}
+.dc-acts{display:flex;flex-wrap:wrap;gap:10px}
+.dc-h{font:12px/1.4 var(--px);margin:22px 0 6px}
+.dc-sub{margin:0 0 10px;font-size:13px}
+.dc-out{border:2px dashed var(--faint);padding:8px 12px;margin-bottom:10px}
+.dc-out .dc-runes{border:0;margin:0;padding:4px 0;min-height:30px}
+.dc-lat{font:14px/1.4 var(--tx);color:var(--gold);overflow-wrap:anywhere}
+.dc-kb{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:6px}
+.dc-k{display:flex;align-items:center;justify-content:center;min-height:48px;background:#0b0b0b;border:2px solid #444;color:#fff;cursor:pointer;touch-action:manipulation;font:9px/1 var(--px);padding:4px}
+.dc-k:hover,.dc-k:focus-visible{border-color:#fff;outline:none}
+.dc-k:active{background:#222}
+.dc-w{grid-column:span 2}
+.dc-g{width:15px;height:21px;fill:currentColor;display:block}
+.dc-tab{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.dc-t{display:flex;align-items:center;justify-content:space-between;gap:6px;border:1px solid var(--faint);padding:6px 8px;font:10px/1 var(--px)}
