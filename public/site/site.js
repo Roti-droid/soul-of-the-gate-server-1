@@ -409,7 +409,9 @@
     };
     var esc2 = function (e) { if (e.key === "Escape") close(); };
     var mc = [];
+    var openedAt = Date.now();
     o.addEventListener("click", function (e) {
+      if (Date.now() - openedAt < 600) return;   // the tap that opened it must not close it
       var t = e.target.closest ? e.target : e.target.parentNode;
       if (t.closest(".egg-q")) { close(); shardsOpen(); return; }
       if (t.closest(".egg-msg")) {     // three clicks on the message open the door behind the door
@@ -429,10 +431,15 @@
     if (typed === "gaster") { typed = ""; egg(); }
   });
   var taps = [];
-  document.querySelector(".brand img").addEventListener("click", function () {
-    var t = Date.now(); taps = taps.filter(function (x) { return t - x < 2500; }); taps.push(t);
+  var gateImg = document.querySelector(".brand img");
+  // phones: count taps on pointerup (no double-tap zoom / selection eats them); the icon itself never navigates
+  gateImg.addEventListener("pointerup", function (e) {
+    if (e.pointerType === "mouse" && e.button) return;
+    var t = Date.now(); taps = taps.filter(function (x) { return t - x < 3000; }); taps.push(t);
     if (taps.length >= 5) { taps = []; egg(); }
   });
+  gateImg.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
+  gateImg.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
   // ---------------------------------------------------------------- the egg inside the egg: «Осколки Врат» → a sealed file → the one whose name was erased.
   // Entry: in the cipher overlay click the message 3 times, or the faint flickering «?» glyph in its corner.
