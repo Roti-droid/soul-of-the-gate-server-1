@@ -354,7 +354,8 @@
   var GLYPH = (function () {      // rune-like: a stem, a top bar of varying length, two branches and sometimes a dot
     var out = {}, seen = {}, seed = 1337;
     function rnd(n) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return Math.floor(seed / 0x7fffffff * n); }
-    for (var c = 65; c <= 90; c++) {
+    var ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";   // the letters first (unchanged), then the same hand writes the digits
+    for (var ci = 0; ci < ABC.length; ci++) {
       var g, k;
       do {
         g = []; for (k = 0; k < GW * GH; k++) g.push(0);
@@ -370,13 +371,18 @@
         }
         if (rnd(3) === 0) set(rnd(2) ? 0 : GW - 1, GH - 1 - rnd(2) * 2);
       } while (seen[g.join("")]);
-      seen[g.join("")] = 1; out[String.fromCharCode(c)] = g;
+      seen[g.join("")] = 1; out[ABC[ci]] = g;
     }
     return out;
   })();
   // extra signs of the same hand: a full stop and the unknown
   GLYPH["."] = [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,1,0,0];
   GLYPH["?"] = [0,1,1,1,0, 0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,1,0,0];
+  GLYPH[":"] = [0,0,0,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,1,0,0, 0,0,0,0,0];
+  GLYPH["-"] = [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0];
+  GLYPH["!"] = [0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,1,0,0];
+  GLYPH["*"] = [0,0,0,0,0, 0,0,1,0,0, 0,0,1,0,0, 1,1,0,1,1, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0];   // a spark of light
+  GLYPH[">"] = [1,0,0,0,0, 1,1,0,0,0, 1,1,1,0,0, 1,1,1,1,0, 1,1,1,0,0, 1,1,0,0,0, 1,0,0,0,0];   // go
   function glyphSvg(ch, cls) {
     var g = GLYPH[ch]; if (!g) return '<span class="gsp"></span>';
     var r = "";
@@ -455,8 +461,8 @@
   var K_BEST = "sotg.shards.best", K_SND = "sotg.shards.snd", K_SEEN = "sotg.file0";
   var LORE = "HIS NAME WAS ERASED. HE WALKED THROUGH THE GATE. ONLY THE SOUL CAME BACK. HE IS STILL WATCHING.";
 
-  // ---- tiny WebAudio beeper (muted by default)
-  var SND = { on: lsGet(K_SND) === "1", ac: null, hum: null };
+  // ---- tiny WebAudio beeper: on unless the visitor muted it once (the first sound always follows a tap)
+  var SND = { on: lsGet(K_SND) !== "0", ac: null, hum: null, laugh: null };
   function ac() {
     if (!SND.ac) { try { var A = window.AudioContext || window.webkitAudioContext; SND.ac = A ? new A() : null; } catch (e) { SND.ac = null; } }
     if (SND.ac && SND.ac.state === "suspended") SND.ac.resume();
@@ -484,11 +490,77 @@
     try { var t = SND.ac.currentTime; h.g.gain.cancelScheduledValues(t); h.g.gain.setValueAtTime(h.g.gain.value, t); h.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
       h.o.forEach(function (o) { o.stop(t + 0.7); }); } catch (e) { /* already stopped */ }
   }
+  // ---- the laugh from the dark: synthesized on the spot (saw + tritone square through two vowel formants,
+  // a breathy noise onset, ring-mod buzz, a quantizing "crusher" and a short echo). Syllables speed up, then one long falling HA.
+  var NOISE = null;
+  function noiseBuf(a) {
+    if (NOISE) return NOISE;
+    var b = a.createBuffer(1, a.sampleRate | 0, a.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return (NOISE = b);
+  }
+  function crushCurve(lv) { var n = 2048, c = new Float32Array(n); for (var i = 0; i < n; i++) { var v = i / (n - 1) * 2 - 1; c[i] = Math.round(v * lv) / lv; } return c; }
+  function laughPlan() {      // times in seconds from the laugh's start; the face uses the same plan to move its mouth
+    var out = [], t = 0, gap = 0.25;
+    for (var i = 0; i < 9; i++) {
+      out.push({ t: t, d: Math.max(0.07, gap * 0.8), v: i < 3 ? "e" : "a", st: i === 2 || i === 5, f: 150 * (1 + i * 0.05) * (1 + 0.12 * Math.sin(i * 2.3)) * (0.92 + Math.random() * 0.16) });
+      t += gap; gap *= 0.85;
+    }
+    out.push({ t: t + 0.05, d: 0.6, v: "a", f: 240, dive: 1 });
+    return out;
+  }
+  function laughPlay(plan, when) {
+    if (!SND.on) return; var a = ac(); if (!a) return; laughStop();
+    try {
+      var t0 = a.currentTime + when, last = plan[plan.length - 1], tEnd = t0 + last.t + last.d + 0.8;
+      var out = a.createGain(); out.gain.value = 0.55;
+      var comp = a.createDynamicsCompressor(); out.connect(comp); comp.connect(a.destination);
+      var bus = a.createGain(), ring = a.createGain(); ring.gain.value = 0.65;
+      var rm = a.createOscillator(), rmg = a.createGain(); rm.type = "square"; rm.frequency.value = 53; rmg.gain.value = 0.35; rm.connect(rmg); rmg.connect(ring.gain);
+      var crush = a.createWaveShaper(); crush.curve = crushCurve(7);
+      var dl = a.createDelay(0.5), fb = a.createGain(), wet = a.createGain(); dl.delayTime.value = 0.13; fb.gain.value = 0.3; wet.gain.value = 0.35;
+      bus.connect(ring); ring.connect(crush); crush.connect(out); crush.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(out);
+      rm.start(t0); rm.stop(tEnd);
+      var FM = { e: [530, 1850], a: [800, 1250] };
+      var voice = function (vw, at, dur, f0, f1) {
+        at = Math.max(a.currentTime + 0.01, at);
+        var o1 = a.createOscillator(), o2 = a.createOscillator(), lfo = a.createOscillator(), lg = a.createGain(), lg2 = a.createGain(), g2 = a.createGain(), mix = a.createGain();
+        o1.type = "sawtooth"; o2.type = "square";
+        o1.frequency.setValueAtTime(f0, at); o1.frequency.exponentialRampToValueAtTime(f1, at + dur);
+        o2.frequency.setValueAtTime(f0 * 1.414, at); o2.frequency.exponentialRampToValueAtTime(f1 * 1.414, at + dur);
+        lfo.frequency.value = 10 + Math.random() * 5; lg.gain.value = f0 * 0.07; lg2.gain.value = f0 * 0.1;
+        lfo.connect(lg); lg.connect(o1.frequency); lfo.connect(lg2); lg2.connect(o2.frequency);
+        g2.gain.value = 0.25; o1.connect(mix); o2.connect(g2); g2.connect(mix);
+        var b1 = a.createBiquadFilter(), b2 = a.createBiquadFilter(), b2g = a.createGain(), env = a.createGain();
+        b1.type = b2.type = "bandpass"; b1.frequency.value = FM[vw][0]; b1.Q.value = 6; b2.frequency.value = FM[vw][1]; b2.Q.value = 9; b2g.gain.value = 0.7;
+        mix.connect(b1); mix.connect(b2); b2.connect(b2g);
+        env.gain.setValueAtTime(0.0001, at); env.gain.linearRampToValueAtTime(1, at + 0.012); env.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        b1.connect(env); b2g.connect(env); env.connect(bus);
+        var n = a.createBufferSource(), nb = a.createBiquadFilter(), ng = a.createGain();     // the breathy "h"
+        n.buffer = noiseBuf(a); nb.type = "bandpass"; nb.frequency.value = 1800; nb.Q.value = 0.8;
+        ng.gain.setValueAtTime(0.0001, at); ng.gain.linearRampToValueAtTime(0.35, at + 0.008); ng.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+        n.connect(nb); nb.connect(ng); ng.connect(bus);
+        [o1, o2, lfo].forEach(function (x) { x.start(at); x.stop(at + dur + 0.05); }); n.start(at, Math.random() * 0.5); n.stop(at + 0.06);
+      };
+      plan.forEach(function (sy) {
+        var at = t0 + sy.t;
+        if (sy.st) { voice(sy.v, at - 0.1, 0.03, sy.f * 1.1, sy.f); voice(sy.v, at - 0.055, 0.03, sy.f * 1.1, sy.f); }   // h-h-heh
+        if (sy.dive) voice(sy.v, at, sy.d, sy.f, 62); else voice(sy.v, at, sy.d, sy.f * 1.12, sy.f * 0.84);
+      });
+      SND.laugh = { out: out };
+      setTimeout(function () { if (SND.laugh && SND.laugh.out === out) SND.laugh = null; try { out.disconnect(); } catch (e) { /* gone */ } }, (tEnd - a.currentTime + 1) * 1000);
+    } catch (e) { /* no audio */ }
+  }
+  function laughStop() {
+    var L = SND.laugh; if (!L) return; SND.laugh = null;
+    try { var t = SND.ac.currentTime; L.out.gain.cancelScheduledValues(t); L.out.gain.setValueAtTime(L.out.gain.value, t); L.out.gain.linearRampToValueAtTime(0, t + 0.08);
+      setTimeout(function () { try { L.out.disconnect(); } catch (e) { /* gone */ } }, 250); } catch (e) { /* gone */ }
+  }
   function sndBtn() {
     var b = el("button", "e2-snd"); b.type = "button";
-    var paint = function () { b.textContent = SND.on ? "♪ звук: вкл" : "♪ звук: выкл"; b.setAttribute("aria-pressed", SND.on ? "true" : "false"); };
+    var paint = function () { b.innerHTML = '<span class="e2c">' + gl(SND.on ? "SOUND ON" : "SOUND OFF") + "</span>"; b.setAttribute("aria-label", SND.on ? "Звук: вкл" : "Звук: выкл"); b.setAttribute("aria-pressed", SND.on ? "true" : "false"); };
     paint();
-    b.addEventListener("click", function (e) { e.stopPropagation(); SND.on = !SND.on; lsSet(K_SND, SND.on ? "1" : "0"); paint(); if (SND.on) { ac(); beep(660, 0.08); } else humStop(); });
+    b.addEventListener("click", function (e) { e.stopPropagation(); SND.on = !SND.on; lsSet(K_SND, SND.on ? "1" : "0"); paint(); if (SND.on) { ac(); beep(660, 0.08); } else { humStop(); laughStop(); } });
     return b;
   }
 
@@ -512,33 +584,53 @@
       var s = ""; for (var i = 0; i < w.length; i++) s += glyphSvg(w[i], cls); return '<span class="e2-word">' + s + "</span>";
     }).join("");
   }
+  function gl(text) { return lineSvg(text, "eg"); }   // English source text → the Gate cipher, sized by font-size
+  function playBtn(word, aria, cls) {
+    return '<button class="' + cls + ' e2-play" type="button" aria-label="' + aria + '">' + glyphSvg(">", "eg e2-pg") + (word ? '<span class="e2c e2-pw">' + gl(word) + "</span>" : "") + "</button>";
+  }
+  // the soul: the owner's drawn heart (img/heart.png), preloaded; until it loads (or if it fails) the old pixel heart stands in
+  var HIMG = new Image(), HOK = false;
+  HIMG.onload = function () { HOK = true; }; HIMG.decoding = "async"; HIMG.src = "/site/img/heart.png";
+  function beatScale(now, hp) {      // lub-dub; faster when the soul is weak
+    var per = hp >= 3 ? 1.0 : hp === 2 ? 0.75 : 0.5, p = (now / 1000 % per) / per;
+    var b = function (c, w) { var d = (p - c) / w; return Math.exp(-d * d); };
+    return 1 + 0.11 * b(0.07, 0.05) + 0.06 * b(0.25, 0.045);
+  }
 
   // ---- the mini-game
   var E2 = null;
+  function heartSvg(cls) {   // the old pixel heart, as a fallback
+    var r = "";
+    for (var y = 0; y < HEART.length; y++) for (var xx = 0; xx < 7; xx++) if (HEART[y][xx] === "#") r += '<rect x="' + xx + '" y="' + y + '" width="1" height="1"/>';
+    return '<svg class="' + cls + '" viewBox="0 0 7 6" shape-rendering="crispEdges" aria-hidden="true" fill="#fff">' + r + "</svg>";
+  }
   function shardsOpen() {
     if (E2) return;
     var o = el("div", "e2"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Осколки Врат");
-    o.innerHTML = '<div class="e2-wrap"><div class="e2-hud"><span class="e2-t">0,0 с</span><span class="e2-hp"></span><span class="e2-sp">✦ 0</span><span class="e2-best"></span></div>' +
-      '<div class="e2-box"><canvas class="e2-cv" width="160" height="160"></canvas><div class="e2-scr"></div></div>' +
-      '<div class="e2-bar"><span class="e2-help">стрелки / WASD · мышь · тяни пальцем</span></div></div>' +
+    o.innerHTML = '<div class="e2-wrap"><div class="e2-hud"><span class="e2-t e2c" aria-label="Время"></span><span class="e2-hp"></span><span class="e2-sp e2c" aria-label="Искры"></span><span class="e2-best e2c" aria-label="Рекорд"></span></div>' +
+      '<div class="e2-box"><canvas class="e2-cv" width="160" height="160"></canvas><canvas class="e2-hv" aria-hidden="true"></canvas><div class="e2-scr"></div></div>' +
+      '<div class="e2-bar"><span class="e2-help e2c" aria-label="Стрелки, WASD, мышь или палец">' + gl("MOVE: ARROWS OR DRAG") + "</span></div></div>" +
       '<button class="e2-x" type="button" aria-label="Закрыть">✕</button>';
     document.body.appendChild(o);
     o.querySelector(".e2-bar").appendChild(sndBtn());
     var cv = o.querySelector(".e2-cv"), x = cv.getContext("2d"), scr = o.querySelector(".e2-scr");
+    var hv = o.querySelector(".e2-hv"), hx2 = hv.getContext("2d"), DPR = Math.min(3, window.devicePixelRatio || 1);
     var hudT = o.querySelector(".e2-t"), hudHp = o.querySelector(".e2-hp"), hudSp = o.querySelector(".e2-sp"), hudB = o.querySelector(".e2-best");
     var F = 160, S = 2, ROUND = 40, sp = sprites();
-    var st = null, raf = 0, last = 0, keys = {}, ptr = null, mouse = null, state = "menu";
-    var best = Number(lsGet(K_BEST)) || 0;
+    var st = null, raf = 0, last = 0, keys = {}, ptr = null, mouse = null, state = "menu", FACE = null, gazeP = null;
+    var best = Number(lsGet(K_BEST)) || 0, hudC = {};
     E2 = { o: o, close: close };
 
+    function setG(node, key, text) { if (hudC[key] === text) return; hudC[key] = text; node.innerHTML = gl(text); }
     function fit() {
       var aw = Math.min(innerWidth - 32, 560), ah = innerHeight - 190;
       S = Math.max(1, Math.floor(Math.min(aw, ah) / F));
       cv.width = cv.height = F * S; cv.style.width = cv.style.height = F * S + "px";
+      hv.width = hv.height = Math.round(F * S * DPR); hv.style.width = hv.style.height = F * S + "px";
       x.imageSmoothingEnabled = false;
       if (state !== "play") draw(0);
     }
-    function paintBest() { hudB.textContent = "рекорд " + best.toFixed(1).replace(".", ","); }
+    function paintBest() { setG(hudB, "b", "BEST " + best.toFixed(1)); }
     function reset() {
       st = { t: 0, hp: 3, inv: 0, sparks: 0, hx: F / 2, hy: F * 0.72, sh: [], fx: [], spk: [], next: 0.4, nextSpk: 1.2, shake: 0,
         qAt: Math.random() < 1 / 8 ? 6 + Math.random() * 14 : -1, qDone: false, q: null };
@@ -548,30 +640,137 @@
       reset(); state = "play"; scr.classList.remove("on"); scr.innerHTML = ""; beep(330, 0.09, "square", 0.05, 660);
       last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
     }
+
+    // ---- the thing in the dark: an original pixel face (two eyes, a too-wide grin), drawn per pixel at 96×64 and scaled up
+    function intro() {
+      if (state === "intro") return;
+      state = "intro"; scr.classList.remove("on"); scr.innerHTML = "";
+      if (SND.on) ac();                 // inside the tap: unlock audio now
+      var T = RM ? { dark: 0.25, eyes: 0.3, mouth: 0.3, laugh: 0.45, out: 1.5, end: 1.8 }
+                 : { dark: 0.6, eyes: 0.6, mouth: 1.05, laugh: 1.7, out: 3.2, end: 3.7 };
+      var plan = laughPlan(); laughPlay(plan, T.laugh);
+      var fc = el("canvas", "e2-face"); fc.setAttribute("aria-hidden", "true"); o.appendChild(fc);
+      var fx = fc.getContext("2d"), fd = Math.min(2, window.devicePixelRatio || 1);
+      var fsize = function () { fc.width = Math.round(innerWidth * fd); fc.height = Math.round(innerHeight * fd); };
+      fsize(); addEventListener("resize", fsize);
+      var LW = 96, LH = 64, CX = 48, MW = 35, off = document.createElement("canvas"); off.width = LW; off.height = LH;
+      var oc = off.getContext("2d"), img = oc.createImageData(LW, LH), d = img.data;
+      var seed = 77, rr = function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      var up = [], lo = [], xx, w, i;
+      for (xx = CX - MW + 1; xx < CX + MW;) { w = 2 + Math.floor(rr() * 3); for (i = 0; i < w; i++) up[xx + i] = { c: xx + w / 2, hw: w / 2, h: 0.22 + rr() * 0.4 }; xx += w + (rr() < 0.35 ? 1 : 0); }
+      for (xx = CX - MW + 2; xx < CX + MW;) { w = 2 + Math.floor(rr() * 3); for (i = 0; i < w; i++) lo[xx + i] = { c: xx + w / 2, hw: w / 2, h: 0.16 + rr() * 0.3 }; xx += w + (rr() < 0.5 ? 1 : 0); }
+      var EYES = [{ x: 32, y: 18, rx: 10.5, ry: 6, a: 0.34 }, { x: 65, y: 17, rx: 8.5, ry: 5, a: -0.4 }];
+      var gx = 0, gy = 0.6, t0 = performance.now(), fr = 0;
+      var cl = function (v) { return v < 0 ? 0 : v > 1 ? 1 : v; }, ease = function (v) { v = cl(v); return v * v * (3 - 2 * v); };
+      var put = function (k, r, g, b, m) { d[k] = r * m; d[k + 1] = g * m; d[k + 2] = b * m; d[k + 3] = 255; };
+      function laughEnv(lt) {
+        var e = 0; for (var j = 0; j < plan.length; j++) { var q = plan[j], u = (lt - q.t) / q.d; if (u >= 0 && u < 1) e = Math.max(e, 1 - u); }
+        return e;
+      }
+      function pixels(t) {
+        var k = RM ? ease((t - T.dark) / T.eyes) : ease((t - T.dark) / T.eyes) * (t > 1.42 && t < 1.5 ? 0.12 : 1);   // one slow blink
+        var eA = RM ? k : cl((t - T.dark + 0.1) / 0.5);
+        var rv = RM ? 1 : ease((t - T.mouth) / 0.7), mA = cl((t - T.mouth) / (RM ? 0.3 : 0.55));
+        var op = 0.22 + 0.78 * ease((t - T.mouth - 0.1) / 0.6);
+        if (!RM && t > T.laugh) op *= 0.72 + 0.4 * laughEnv(t - T.laugh);      // the jaw moves with the laugh
+        d.fill(0);
+        for (var y = 0; y < LH; y++) for (var x0 = 0; x0 < LW; x0++) {
+          var px0 = x0 + 0.5, py = y + 0.5, idx = (y * LW + x0) * 4;
+          if (eA > 0 && k > 0.02) for (var e = 0; e < 2; e++) {
+            var E = EYES[e], dx = px0 - E.x, dy = py - E.y, ca = Math.cos(E.a), sa = Math.sin(E.a);
+            var u = dx * ca + dy * sa, v = -dx * sa + dy * ca, nu = u / E.rx;
+            if (nu <= -1 || nu >= 1) continue;
+            var lim = E.ry * k * (1 - nu * nu) * (v < 0 ? 0.62 : 1);               // heavy upper lid
+            if (Math.abs(v) >= lim) continue;
+            var pu = gx * E.rx * 0.38, pv = gy * lim * 0.35;
+            if (Math.abs(u - pu) < 0.95 && Math.abs(v - pv) < Math.max(1, lim * 0.8)) put(idx, 10, 0, 0, 1);  // a thin slit pupil
+            else { var r2 = Math.sqrt(nu * nu + (v / E.ry) * (v / E.ry)); if (r2 < 0.42) put(idx, 255, 251, 232, eA); else if (r2 < 0.8) put(idx, 255, 205, 96, eA); else put(idx, 255, 58, 31, eA); }
+          }
+          if (mA <= 0) continue;
+          var tt = (px0 - CX) / MW; if (tt <= -1 || tt >= 1 || Math.abs(tt) > rv) continue;
+          var ut = 43 - 14 * tt * tt - 2.5 * tt, lt0 = 56 - 27.5 * tt * tt - 2.5 * tt, lw = ut + (lt0 - ut) * op;
+          if (py <= ut - 0.6 || py >= lw + 0.6) continue;
+          if (py <= ut || py >= lw) { put(idx, 120, 10, 18, mA * 0.8); continue; }      // a wet red lip line
+          var th0 = lt0 - ut, a1 = up[x0], a2 = lo[x0], depth;
+          if (a1) { depth = a1.h * th0 * (1 - Math.abs(px0 - a1.c) / a1.hw); if (py - ut < Math.min(depth, (lw - ut) * 0.62)) { put(idx, x0 === Math.floor(a1.c - a1.hw + 0.4) ? 178 : 238, x0 === Math.floor(a1.c - a1.hw + 0.4) ? 168 : 230, x0 === Math.floor(a1.c - a1.hw + 0.4) ? 134 : 200, mA); continue; } }
+          if (a2) { depth = a2.h * th0 * (1 - Math.abs(px0 - a2.c) / a2.hw); if (lw - py < Math.min(depth, (lw - ut) * 0.5)) { put(idx, 214, 204, 170, mA); continue; } }
+          var rr2 = (py - ut) / (lw - ut), edge = Math.min(rr2, 1 - rr2) * 2;
+          put(idx, 78 - 64 * edge, 8 - 6 * edge, 16 - 12 * edge, mA);
+        }
+        oc.putImageData(img, 0, 0);
+      }
+      function paint(t) {
+        var W = fc.width, H = fc.height;
+        fx.setTransform(1, 0, 0, 1, 0, 0); fx.globalAlpha = 1; fx.shadowBlur = 0; fx.fillStyle = "#000"; fx.fillRect(0, 0, W, H);
+        var S2 = Math.max(2, Math.floor(Math.min(W * 0.94 / LW, H * 0.6 / LH))), ox = Math.round((W - LW * S2) / 2), oy = Math.round(H * 0.42 - LH * S2 / 2);
+        if (gazeP) {      // the eyes follow you
+          var tx = cl(((gazeP.x * fd - ox) / S2 - CX) / (LW * 0.6) * 0.5 + 0.5) * 2 - 1, ty = cl(((gazeP.y * fd - oy) / S2 - 18) / (LH * 0.8) * 0.5 + 0.5) * 2 - 1;
+          gx += (tx - gx) * 0.12; gy += (ty - gy) * 0.12;
+        }
+        pixels(t);
+        var g = t > T.out ? 1 - cl((t - T.out) / (T.end - T.out)) : 1, jit = 0;
+        if (!RM) {
+          var hot = t > T.laugh && t < T.out ? 0.45 : 0.12;
+          if (Math.random() < hot) { ox += (Math.random() < 0.5 ? -1 : 1) * S2; jit = 1; }
+          if (Math.random() < hot * 0.5) oy += (Math.random() < 0.5 ? -1 : 1) * S2;
+          if (Math.random() < 0.05) g *= 0.4;                                   // flicker
+          fx.fillStyle = "rgba(255,255,255,0.05)";                              // grain
+          for (var n = 0; n < 50; n++) fx.fillRect(Math.random() * W | 0, Math.random() * H | 0, S2, S2);
+        }
+        fx.imageSmoothingEnabled = false; fx.globalAlpha = g;
+        fx.shadowColor = "rgba(255,40,24,0.6)"; fx.shadowBlur = S2 * 4;
+        fx.drawImage(off, ox, oy, LW * S2, LH * S2);
+        fx.shadowBlur = 0;
+        if (!RM && (jit || t > T.out)) {                                         // torn scanlines + colour split
+          var bands = t > T.out ? 10 : 3;
+          for (var b = 0; b < bands; b++) {
+            var sy = Math.random() * LH | 0, sh = 1 + (Math.random() * (t > T.out ? 8 : 3) | 0), sx = ((Math.random() - 0.5) * (t > T.out ? 24 : 8) | 0) * S2;
+            fx.drawImage(off, 0, sy, LW, sh, ox + sx, oy + sy * S2, LW * S2, sh * S2);
+          }
+          if (t > T.out) { fx.globalCompositeOperation = "lighter"; fx.globalAlpha = g * 0.5; fx.drawImage(off, ox - 2 * S2, oy, LW * S2, LH * S2); fx.globalCompositeOperation = "source-over"; }
+        }
+        fx.globalAlpha = 1;
+        fx.fillStyle = "rgba(0,0,0,0.35)";                                       // scanlines
+        for (var yy = 0; yy < H; yy += 3 * fd) fx.fillRect(0, yy, W, fd);
+      }
+      var mv = function (e) { gazeP = { x: e.clientX, y: e.clientY }; };
+      o.addEventListener("pointermove", mv); o.addEventListener("pointerdown", mv);
+      FACE = { stop: function () { cancelAnimationFrame(fr); removeEventListener("resize", fsize); o.removeEventListener("pointermove", mv); o.removeEventListener("pointerdown", mv); fc.remove(); FACE = null; } };
+      function step(now) {
+        if (!FACE) return;
+        var t = (now - t0) / 1000;
+        if (t >= T.end) { FACE.stop(); start(); return; }
+        paint(t); fr = requestAnimationFrame(step);
+      }
+      paint(0); fr = requestAnimationFrame(step);
+    }
+
     function score() { return st.t + st.sparks * 0.5; }
     function end(win) {
       state = "over"; cancelAnimationFrame(raf);
       var sc = score(), nb = sc > best + 1e-9;
       if (nb) { best = sc; lsSet(K_BEST, best.toFixed(2)); paintBest(); }
       beep(win ? 880 : 140, win ? 0.3 : 0.4, win ? "triangle" : "sawtooth", 0.05, win ? 1320 : 60);
-      menu('<p class="e2-ttl">' + (win ? "ВРАТА ЗАТИХЛИ" : "ДУША ДРОГНУЛА") + "</p>" +
-        '<p class="e2-big">' + sc.toFixed(1).replace(".", ",") + "</p>" +
-        '<p class="e2-sub">' + st.t.toFixed(1).replace(".", ",") + " с · ✦ " + st.sparks + (nb ? ' · <b class="e2-new">новый рекорд</b>' : "") + "</p>" +
-        '<button class="btn e2-go" type="button">ещё раз</button>');
+      menu('<div class="e2c e2-ttl" aria-label="' + (win ? "Врата затихли" : "Душа дрогнула") + '">' + gl(win ? "THE GATE IS SILENT" : "THE SOUL TREMBLED") + "</div>" +
+        '<div class="e2c e2-big" aria-label="' + sc.toFixed(1) + '">' + gl(sc.toFixed(1)) + "</div>" +
+        '<div class="e2c e2-sub">' + gl(st.t.toFixed(1) + " - * " + st.sparks) + "</div>" + (nb ? '<div class="e2c e2-new" aria-label="Новый рекорд">' + gl("NEW BEST!") + "</div>" : "") +
+        playBtn("AGAIN", "Ещё раз", "e2-go"));
       scr.querySelector(".e2-go").focus();
     }
     function sealed() {
       state = "file"; cancelAnimationFrame(raf); beep(98, 0.9, "sawtooth", 0.05, 49);
       if (score() > best) { best = score(); lsSet(K_BEST, best.toFixed(2)); paintBest(); }
       o.classList.add("e2-dim");
-      menu('<div class="e2-file"><p class="e2-fnum">ЗАПИСЬ №░░ — НЕИЗВЕСТНО</p>' +
+      menu('<div class="e2-file"><div class="e2c e2-fnum" aria-label="Запись неизвестна">' + gl("FILE ?? - UNKNOWN") + "</div>" +
         '<button class="e2-q" type="button" aria-label="Вскрыть запись">' + glyphSvg("?", "e2-qg") + "</button>" +
-        '<p class="e2-stamp">ЗАПЕЧАТАНО</p><p class="e2-sub">коснись, чтобы вскрыть</p></div>');
+        '<div class="e2c e2-stamp" aria-label="Запечатано">' + gl("SEALED") + '</div><div class="e2c e2-sub">' + gl("TOUCH TO OPEN") + "</div></div>");
       var q = scr.querySelector(".e2-q"); q.focus();
       q.addEventListener("click", function (e) { e.stopPropagation(); close(true); dossier(); });
     }
     scr.addEventListener("click", function (e) {
-      var b = e.target.closest && e.target.closest(".e2-go"); if (b) { e.stopPropagation(); start(); }
+      if (!e.target.closest) return;
+      if (e.target.closest(".e2-first")) { e.stopPropagation(); intro(); return; }
+      var b = e.target.closest(".e2-go"); if (b) { e.stopPropagation(); start(); }
     });
 
     function spawn() {
@@ -643,6 +842,30 @@
       if (st.t >= ROUND) { st.t = ROUND; paintHud(); return end(true); }
     }
     function px(cx, cy, c) { x.fillStyle = c; x.fillRect(Math.round(cx * S), Math.round(cy * S), S, S); }
+    // the soul on its own smooth high-DPI layer: the drawn heart, beating, squashing and flashing when hit
+    function drawSoul(now, ox, oy) {
+      hx2.setTransform(1, 0, 0, 1, 0, 0); hx2.clearRect(0, 0, hv.width, hv.height);
+      if (!st) return;
+      var blink = st.inv > 0 && Math.floor(st.inv * 12) % 2;
+      var k = S * DPR, cx = (st.hx * S + ox) * DPR, cy = (st.hy + 0.4) * S * DPR + oy * DPR;
+      if (!HOK) {     // fallback: the old pixel heart
+        if (blink) return;
+        var hx = Math.round(st.hx) - 3, hy = Math.round(st.hy) - 3;
+        hx2.imageSmoothingEnabled = false; hx2.fillStyle = "#fff"; hx2.shadowColor = "rgba(255,255,255,.7)"; hx2.shadowBlur = 6 * k;
+        for (var r = 0; r < HEART.length; r++) for (var c = 0; c < 7; c++) if (HEART[r][c] === "#") hx2.fillRect((hx + c) * k + ox * DPR, (hy + r) * k + oy * DPR, k, k);
+        hx2.shadowBlur = 0; return;
+      }
+      var beat = RM ? 1 : beatScale(now, st.hp), sq = st.inv > 0.8 ? (st.inv - 0.8) / 0.3 : 0;
+      var hH = 11.5 * k * beat, hW = hH * HIMG.width / HIMG.height;
+      hx2.imageSmoothingEnabled = true; hx2.imageSmoothingQuality = "high";
+      hx2.translate(cx, cy); hx2.scale(1 + 0.24 * sq, 1 - 0.24 * sq);
+      hx2.globalAlpha = blink ? 0.35 : 1;
+      hx2.shadowColor = "rgba(255,30,40," + (0.45 + 0.25 * (beat - 1) / 0.11) + ")"; hx2.shadowBlur = 5 * k;
+      hx2.drawImage(HIMG, -hW / 2, -hH / 2, hW, hH);
+      hx2.shadowBlur = 0;
+      if (sq > 0) { hx2.globalCompositeOperation = "lighter"; hx2.globalAlpha = sq * 0.8; hx2.drawImage(HIMG, -hW / 2, -hH / 2, hW, hH); hx2.globalCompositeOperation = "source-over"; }
+      hx2.globalAlpha = 1;
+    }
     function draw(now) {
       x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#050505"; x.fillRect(0, 0, cv.width, cv.height);
       var ox = 0, oy = 0;
@@ -651,7 +874,7 @@
       // faint floor grid
       x.fillStyle = "#101010";
       for (var gy = 8; gy < F; gy += 16) for (var gx = 8; gx < F; gx += 16) x.fillRect(gx * S, gy * S, S, S);
-      if (!st) return;
+      if (!st) { drawSoul(now, 0, 0); return; }
       var t = now / 1000, i;
       for (i = 0; i < st.spk.length; i++) {
         var p = st.spk[i], tw = (Math.sin(t * 9 + i) > 0) || p.l > 1.2 ? 1 : 0; if (p.l < 1.2 && !tw) continue;
@@ -670,21 +893,16 @@
       }
       for (i = 0; i < st.fx.length; i++) { var f = st.fx[i]; x.globalAlpha = Math.min(1, f.l * 3); px(f.x, f.y, f.c); }
       x.globalAlpha = 1;
-      // the soul
-      if (!(st.inv > 0 && Math.floor(st.inv * 12) % 2)) {
-        var hx = Math.round(st.hx) - 3, hy = Math.round(st.hy) - 3;
-        x.shadowColor = "rgba(255,255,255,.7)"; x.shadowBlur = 6 * S;
-        for (var r = 0; r < HEART.length; r++) for (var cc = 0; cc < 7; cc++) if (HEART[r][cc] === "#") px(hx + cc, hy + r, "#fff");
-        x.shadowBlur = 0;
-      }
+      drawSoul(now, ox, oy);
       // time bar
       x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = "#222"; x.fillRect(0, cv.height - S, cv.width, S);
       x.fillStyle = "#fff"; x.fillRect(0, cv.height - S, Math.round(cv.width * st.t / ROUND), S);
     }
     function paintHud() {
-      hudT.textContent = st.t.toFixed(1).replace(".", ",") + " с";
-      hudHp.innerHTML = [0, 1, 2].map(function (i) { return '<i class="' + (i < st.hp ? "on" : "") + '"></i>'; }).join("");
-      hudSp.textContent = "✦ " + st.sparks;
+      setG(hudT, "t", (st ? st.t : 0).toFixed(1));
+      var hp = st ? st.hp : 3;
+      if (hudC.hp !== hp) { hudC.hp = hp; hudHp.innerHTML = [0, 1, 2].map(function (i) { return '<i class="' + (i < hp ? "on" : "") + '"></i>'; }).join(""); }
+      setG(hudSp, "s", "* " + (st ? st.sparks : 0));
     }
     function loop(now) {
       var dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -698,7 +916,9 @@
       if (e.key === "Escape") { e.preventDefault(); close(); return; }
       var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (/^(Arrow|w$|a$|s$|d$)/.test(k)) { keys[k] = 1; mouse = null; e.preventDefault(); }
-      if ((k === " " || k === "Enter") && state !== "play" && state !== "file" && document.activeElement && !document.activeElement.closest(".e2-snd,.e2-x")) { e.preventDefault(); start(); }
+      if ((k === " " || k === "Enter") && state !== "play" && state !== "file" && state !== "intro" && document.activeElement && !document.activeElement.closest(".e2-snd,.e2-x")) {
+        e.preventDefault(); if (state === "menu") intro(); else start();
+      }
     }
     function onKeyUp(e) { var k = e.key.length === 1 ? e.key.toLowerCase() : e.key; delete keys[k]; }
     function lp(e) { var r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * F, y: (e.clientY - r.top) / r.height * F }; }
@@ -716,7 +936,8 @@
     var up = function (e) { if (ptr && ptr.id === e.pointerId) ptr = null; };
     cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
     cv.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") mouse = null; });
-    function onVis() { if (document.hidden && state === "play") { state = "pause"; menu('<p class="e2-ttl">ПАУЗА</p><button class="btn e2-res" type="button">дальше</button>'); } }
+    o.addEventListener("pointerdown", function (e) { gazeP = { x: e.clientX, y: e.clientY }; }, true);
+    function onVis() { if (document.hidden && state === "play") { state = "pause"; menu('<div class="e2c e2-ttl" aria-label="Пауза">' + gl("PAUSE") + "</div>" + playBtn("", "Дальше", "e2-res")); } }
     scr.addEventListener("click", function (e) {
       if (e.target.closest && e.target.closest(".e2-res")) { e.stopPropagation(); state = "play"; scr.classList.remove("on"); scr.innerHTML = ""; last = performance.now(); raf = requestAnimationFrame(loop); }
     });
@@ -727,16 +948,23 @@
 
     function close(quick) {
       if (!E2) return; E2 = null; state = "closed"; cancelAnimationFrame(raf);
+      if (FACE) FACE.stop(); laughStop();
       document.removeEventListener("keydown", onKey); document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("visibilitychange", onVis); removeEventListener("resize", fit);
       document.body.classList.remove("e2-lock");
       o.classList.remove("on"); setTimeout(function () { o.remove(); }, quick || RM ? 0 : 300);
     }
-    paintBest(); fit();
-    menu('<p class="e2-ttl">ОСКОЛКИ ВРАТ</p><p class="e2-sub">уклоняйся от осколков шифра<br>собирай искры света ✦</p><button class="btn e2-go" type="button">начать</button>');
-    requestAnimationFrame(function () { o.classList.add("on"); var b = scr.querySelector(".e2-go"); if (b) b.focus(); else o.focus(); });
+    paintBest(); paintHud(); fit();
+    menu('<div class="e2c e2-ttl" aria-label="Осколки Врат">' + gl("SHARDS OF THE GATE") + "</div>" +
+      '<div class="e2-heart">' + (HOK ? '<img src="/site/img/heart.png" alt="" draggable="false">' : heartSvg("e2-hpx")) + "</div>" +
+      '<div class="e2c e2-sub" aria-label="Уклоняйся от осколков шифра, собирай искры света">' + gl("DODGE THE SHARDS") + "</div>" +
+      '<div class="e2c e2-sub">' + gl("CATCH THE LIGHT *") + "</div>" +
+      playBtn("", "Начать", "e2-first"));
+    var hi = scr.querySelector(".e2-heart img");
+    if (hi) hi.addEventListener("error", function () { hi.parentNode.innerHTML = heartSvg("e2-hpx"); });
+    else if (!HOK) HIMG.addEventListener("load", function () { var b = scr.querySelector(".e2-heart"); if (b && state === "menu") b.innerHTML = '<img src="/site/img/heart.png" alt="" draggable="false">'; });
+    requestAnimationFrame(function () { o.classList.add("on"); var b = scr.querySelector(".e2-first"); if (b) b.focus({ preventScroll: true }); else o.focus(); });
   }
-
   // ---- the dossier: a figure in a lab coat, face scratched out, name redacted
   function drawFigure(c, seed) {
     var x = c.getContext("2d"), W = c.width, H = c.height;

@@ -205,8 +205,8 @@ body.e2-lock{overflow:hidden}
   font-family:var(--px);color:#fff;touch-action:none;user-select:none;-webkit-user-select:none}
 .e2.on{opacity:1}
 .e2-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;max-width:100%}
-.e2-hud{display:flex;gap:14px;align-items:center;justify-content:space-between;width:100%;font-size:10px;color:#cfcfcf;flex-wrap:wrap}
-.e2-t{min-width:6.5em}.e2-sp{color:var(--gold)}.e2-best{color:#666}
+.e2-hud{display:flex;gap:14px;align-items:center;justify-content:space-between;width:100%;font-size:12px;color:#cfcfcf;flex-wrap:wrap}
+.e2-t{min-width:4em;justify-content:flex-start}.e2-sp{color:var(--gold)}.e2-best{color:#666}
 .e2-hp{display:flex;gap:5px}
 .e2-hp i{width:10px;height:9px;background:#2a2a2a;clip-path:polygon(0 20%,20% 0,40% 0,50% 15%,60% 0,80% 0,100% 20%,100% 50%,50% 100%,0 50%)}
 .e2-hp i.on{background:#fff}
@@ -220,10 +220,10 @@ body.e2-lock{overflow:hidden}
 .e2-new{color:var(--gold);font-weight:400}
 .e2-scr .btn{font-size:11px;padding:12px 18px}
 .e2-bar{display:flex;gap:14px;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap}
-.e2-help{font:12px/1.4 var(--tx);color:#555}
-.e2-snd{background:none;border:2px solid #333;color:#888;font:9px/1 var(--px);padding:8px 10px;cursor:pointer}
+.e2-help{font-size:10px;color:#555;justify-content:flex-start}
+.e2-snd{display:inline-flex;background:none;border:2px solid #333;color:#888;font-size:10px;line-height:1;padding:9px 10px;cursor:pointer;touch-action:manipulation}
 .e2-snd:hover,.e2-snd:focus-visible{border-color:#fff;color:#fff;outline:none}
-.e2-x{position:absolute;top:10px;right:10px;background:none;border:0;color:#666;font:16px/1 var(--px);padding:12px;cursor:pointer}
+.e2-x{position:absolute;z-index:5;top:10px;right:10px;background:none;border:0;color:#666;font:16px/1 var(--px);padding:12px;cursor:pointer}
 .e2-x:hover,.e2-x:focus-visible{color:#fff;outline:none}
 .e2.e2-dim .e2-hud,.e2.e2-dim .e2-bar{opacity:.25}
 .e2-file{display:flex;flex-direction:column;align-items:center;gap:12px;border:2px dashed #555;padding:16px 14px;background:#070707;max-width:92%}
@@ -265,7 +265,7 @@ body.e2-lock{overflow:hidden}
   .e3-fig{width:144px;height:224px}
   .e3-g{width:9px;height:13px}
   .e3-cipher{gap:8px 11px}
-  .e2-hud{font-size:9px;gap:10px}
+  .e2-hud{font-size:11px;gap:10px}
 }
 
 @media (max-width:820px){
@@ -311,3 +311,27 @@ img{-webkit-user-drag:none;user-drag:none}
 .egg-x{position:absolute;top:14px;right:14px;width:44px;height:44px;background:none;border:2px solid #fff;color:#fff;font:18px/1 var(--px);cursor:pointer;opacity:.85}
 .egg-x:hover,.egg-x:focus-visible{background:#fff;color:#000;outline:none}
 .egg-q{color:#3a3a3a}
+
+/* «Осколки Врат» in the Gate cipher: every label is glyphs (English source), sized by font-size */
+.e2c{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-end;gap:.3em .55em;line-height:1}
+.e2c .e2-word{gap:.16em}
+.eg{width:.714em;height:1em;fill:currentColor;display:block}
+.e2-scr{gap:12px}
+.e2-ttl.e2c{font-size:clamp(15px,4.4vw,22px);color:#fff;filter:drop-shadow(0 0 6px rgba(255,255,255,.35))}
+.e2-sub.e2c{font-size:clamp(10px,2.8vw,13px);color:#8d8d8d}
+.e2-big.e2c{font-size:clamp(28px,8vw,44px)}
+.e2-new.e2c{font-size:12px;color:var(--gold)}
+.e2-fnum.e2c{font-size:12px;color:#ccc}
+.e2-stamp.e2c{font-size:13px;padding:6px 9px}
+.e2-play{display:flex;flex-direction:column;align-items:center;gap:8px;background:#000;border:3px solid #fff;color:#fff;padding:12px 24px;cursor:pointer;
+  touch-action:manipulation;box-shadow:0 0 0 3px #000,0 0 0 5px #3a3a3a;animation:e2Pulse 1.4s ease-in-out infinite}
+.e2-play:hover,.e2-play:focus-visible{background:#fff;color:#000;outline:none}
+.eg.e2-pg{width:20px;height:28px;margin-left:5px}
+.e2-pw{font-size:11px}
+@keyframes e2Pulse{0%,100%{box-shadow:0 0 0 3px #000,0 0 0 5px #3a3a3a,0 0 0 rgba(255,255,255,0)}50%{box-shadow:0 0 0 3px #000,0 0 0 5px #8a8a8a,0 0 24px rgba(255,255,255,.4)}}
+.e2-hv{position:absolute;left:0;top:0;pointer-events:none}
+.e2-heart{height:clamp(64px,19vw,104px);display:flex;align-items:center;justify-content:center;animation:e2Beat 1s linear infinite}
+.e2-heart img{height:100%;width:auto;display:block;filter:drop-shadow(0 0 10px rgba(255,30,40,.5));-webkit-user-drag:none}
+.e2-hpx{height:50%;width:auto;filter:drop-shadow(0 0 6px rgba(255,255,255,.6))}
+@keyframes e2Beat{0%,100%{transform:scale(1)}7%{transform:scale(1.1)}14%{transform:scale(1)}25%{transform:scale(1.05)}33%{transform:scale(1)}}
+.e2-face{position:absolute;inset:0;width:100%;height:100%;z-index:4;display:block;background:#000;cursor:none}
