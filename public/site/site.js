@@ -1634,7 +1634,10 @@
   }
   footMark();
   // owner preview: ?seehim=1&ft=<seconds> opens the special seed's footage frozen at that moment
-  try { if (seeHim() && new URLSearchParams(location.search).get("ft")) setTimeout(footage, 300); } catch (e) { /* old browser */ }
+  try {
+    if (seeHim() && new URLSearchParams(location.search).get("ft")) setTimeout(footage, 300);
+    else if (seeHim()) setTimeout(shardsOpen, 400);   // ?seehim=1 → straight into the mini-game, special seed forced
+  } catch (e) { /* old browser */ }
 
   // ---------------------------------------------------------------- start
   api("me").then(function (r) {
