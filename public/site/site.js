@@ -25,7 +25,7 @@
 
   // ---------------------------------------------------------------- router + transitions
   function go(path, push) {
-    var page = PAGES[path.replace(/\/+$/, "") || "/"] || "home";
+    var page = PAGES[path.split("?")[0].replace(/\/+$/, "") || "/"] || "home";
     if (push) history.pushState({}, "", path);
     var next = document.querySelector('.page[data-page="' + page + '"]');
     var prev = cur && cur !== next ? cur : null;
@@ -67,20 +67,30 @@
 
   // ---------------------------------------------------------------- chapters (1 is out; 2–10 are locked: never shown as released)
   function renderChapters(box, mini) {
-    var h = "";
-    for (var i = 1; i <= 10; i++) {
-      var n = "ГЛАВА " + (i < 10 ? "0" + i : i);
-      if (i === 1) {
-        h += '<a class="ch open reveal" href="/download" data-link><span class="num">' + n + '</span><img src="/site/img/gate.svg" alt="">' +
-          '<span class="name">Soul of the Gate — Chapter&nbsp;1</span><span class="st">ДОСТУПНА</span></a>';
-      } else {
-        h += '<div class="ch locked reveal" aria-label="Глава ' + i + ': скоро"><span class="num">' + n + '</span><img src="/site/img/locked.svg" alt="">' +
-          '<span class="name">???</span><span class="st">СКОРО</span></div>';
+    // a chapter is open when chapter 1 (always) or when a published file exists for it; its name comes from that file's game
+    var draw = function () {
+      var by = {};
+      (FILES || []).forEach(function (f) { var c = +f.chapter || 0; if (c >= 1 && c <= 10 && !by[c]) by[c] = f; });
+      var h = "";
+      for (var i = 1; i <= 10; i++) {
+        var n = "ГЛАВА " + (i < 10 ? "0" + i : i), f = by[i];
+        if (i === 1 || f) {
+          var name = i === 1 ? "Soul of the Gate — Chapter&nbsp;1" : esc(f.game || "Soul of the Gate") + " — Chapter&nbsp;" + i;
+          var paidOnly = f && (FILES || []).filter(function (x) { return +x.chapter === i; }).every(function (x) { return x.paid; });
+          var st = paidOnly && i !== 1 ? '<span class="st paid">КУПИТЬ</span>' : '<span class="st">ДОСТУПНА</span>';
+          h += '<a class="ch open reveal" href="/download?ch=' + i + '" data-link><span class="num">' + n + '</span><img src="/site/img/gate.svg" alt="">' +
+            '<span class="name">' + name + '</span>' + st + '</a>';
+        } else {
+          h += '<div class="ch locked reveal" aria-label="Глава ' + i + ': скоро"><span class="num">' + n + '</span><img src="/site/img/locked.svg" alt="">' +
+            '<span class="name">???</span><span class="st">СКОРО</span></div>';
+        }
+        if (mini && i === 6) break;
       }
-      if (mini && i === 6) break;
-    }
-    box.innerHTML = h;
-    reveal();
+      box.innerHTML = h;
+      reveal();
+    };
+    draw();
+    loadFiles().then(draw);
   }
 
   // ---------------------------------------------------------------- downloads
@@ -120,7 +130,12 @@
     if (FILES.err) { box.innerHTML = '<p class="msg err">' + esc(FILES.err) + "</p>"; return; }
     if (!FILES.length) { box.innerHTML = '<p class="muted">Файлов пока нет.</p>'; return; }
     var groups = {}, order = [];
-    FILES.forEach(function (f) {
+    var want = 0; try { want = +new URLSearchParams(location.search).get("ch") || 0; } catch (e) { /* old browser */ }
+    var list = want ? FILES.filter(function (f) { return (+f.chapter || 0) === want; }) : FILES.slice();
+    if (want && !list.length) { box.innerHTML = '<p class="muted">Для этой главы файлов пока нет.</p>'; return; }
+    list.sort(function (a, b) { return (+a.chapter || 0) - (+b.chapter || 0); });
+    if (want) { var all = el("a", "btn btn-sm", "← Все главы"); all.href = "/download"; all.setAttribute("data-link", ""); box.appendChild(all); }
+    list.forEach(function (f) {
       var k = f.game + "|" + f.chapter;
       if (!groups[k]) { groups[k] = []; order.push(k); }
       groups[k].push(f);

@@ -511,3 +511,6 @@ img{-webkit-user-drag:none;user-drag:none}
 .e8-prev .eg{transform:scaleX(-1)}
 .e8-x{z-index:3}
 @media (prefers-reduced-motion:reduce){.e7-slot.lit{box-shadow:0 0 14px var(--c)}.e7-slot.born,.e7-book.born{animation:none}}
+
+.ch.open .st.paid{color:#ffd23f}
+.fgroup + .fgroup{margin-top:28px}
