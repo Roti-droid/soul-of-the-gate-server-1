@@ -3316,34 +3316,60 @@
     requestAnimationFrame(function () { o.classList.add("on"); o.focus(); });
   }
   var DOS = null;
-  function dossier() {
+  function seenFace(c, SN, gx, gy, t) {   // the rare dossier: his real face, pinpoint pupils that find you
+    var x = c.getContext("2d"); x.imageSmoothingEnabled = false; x.clearRect(0, 0, 72, 112); x.drawImage(SN.c, 0, 0);
+    SN.eyes.forEach(function (e) {
+      var px = Math.round(e.x - 0.5 + gx * 2.2), py = Math.round(e.y - 0.5 + gy * 1.6);
+      x.fillStyle = "rgba(255,30,50,.35)"; x.fillRect(px - 1, py, 3, 1); x.fillRect(px, py - 1, 1, 3);
+      x.fillStyle = "#fff4f0"; x.fillRect(px, py, 1, 1);
+    });
+    if (Math.random() < 0.18) {   // a torn scanline
+      var y0 = Math.random() * 112 | 0, h = 1 + (Math.random() * 4 | 0), sh = ((Math.random() * 7 | 0) - 3) || 2;
+      x.drawImage(c, 0, y0, 72, h, sh, y0, 72, h);
+    }
+    if (Math.random() < 0.06) { x.fillStyle = "rgba(196,0,31,.35)"; x.fillRect(0, 0, 72, 112); }
+  }
+  function dossier(face) {
     if (DOS) return;
+    if (face === undefined) face = cryptoBelow(1000000) === 0;   // exactly 1 opening in 1 000 000: the face is not scratched out
     lsSet(K_SEEN, "1"); footMark();
-    var o = el("div", "e3"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись: неизвестно");
+    var o = el("div", "e3" + (face ? " e3-seen" : "")); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись: неизвестно");
     o.innerHTML = '<canvas class="e3-noise" aria-hidden="true"></canvas><div class="e3-red" aria-hidden="true"></div>' +
       '<div class="e3-card"><p class="e3-head">ЗАПИСЬ №░░ · КОРОЛЕВСКАЯ СТРАЖА · ЛАБОРАТОРИЯ</p>' +
-      '<div class="e3-body"><canvas class="e3-fig" width="72" height="112" role="img" aria-label="Фигура в белом халате, лицо зачёркнуто"></canvas>' +
+      '<div class="e3-body"><canvas class="e3-fig" width="72" height="112" role="img" aria-label="' + (face ? "Лицо. Оно смотрит на вас" : "Фигура в белом халате, лицо зачёркнуто") + '"></canvas>' +
       '<div class="e3-info"><p class="e3-row"><span class="e3-k">ИМЯ</span><span class="e3-name">██████</span></p>' +
       '<p class="e3-row"><span class="e3-k">СТАТУС</span><span>— не найден —</span></p>' +
       '<div class="e3-cipher" aria-label="Запись шифром Врат">' + lineSvg(LORE, "e3-g") + "</div>" +
-      '<p class="e3-ru">Учёный королевской стражи. Имя стёрто.</p></div></div>' +
+      (face ? '<div class="e3-cipher e3-cx" aria-label="Запись шифром Врат">' + lineSvg("YOU WERE NOT SUPPOSED TO SEE ME.", "e3-g") + "</div>" : "") +
+      '<p class="e3-ru">Учёный королевской стражи. Имя стёрто.</p>' + (face ? '<p class="e3-ru e3-rx">Ты не должен был этого видеть.</p>' : "") + "</div></div>" +
       '<p class="e3-foot">дело не подлежит восстановлению</p></div>';
     document.body.appendChild(o);
     var fig = o.querySelector(".e3-fig"), nm = o.querySelector(".e3-name"), noise = o.querySelector(".e3-noise"), nx = noise.getContext("2d");
     var seed = 9001, tick = 0, timer = 0, raf = 0, NAMES = ["██████", "█▓████", "██ ▒██", "▓█████", "░█▓█▒█", "██████"];
-    drawFigure(fig, seed);
+    var SN = face ? drawSeen() : null, gx = 0, gy = 0, tgx = 0, tgy = 0;
+    if (face) {
+      seenFace(fig, SN, 0, 0);
+      o.addEventListener("pointermove", function (e) {
+        var b = fig.getBoundingClientRect(), dx = e.clientX - (b.left + b.width / 2), dy = e.clientY - (b.top + b.height * 0.28), m = Math.max(1, Math.hypot(dx, dy));
+        tgx = dx / m * Math.min(1, m / 120); tgy = dy / m * Math.min(1, m / 120);
+      });
+    } else drawFigure(fig, seed);
     function nsize() { noise.width = Math.ceil(innerWidth / 3); noise.height = Math.ceil(innerHeight / 3); if (RM) static_(); }
     function static_() {
       var w = noise.width, h = noise.height, img = nx.createImageData(w, h), d = img.data, rr = 1.25, gg = 0.9;
-      for (var i = 0; i < d.length; i += 4) { var v = Math.random() < 0.5 ? 0 : Math.random() * 70; d[i] = v * rr; d[i + 1] = v * gg; d[i + 2] = v * gg; d[i + 3] = 255; }
+      for (var i = 0; i < d.length; i += 4) { var v = Math.random() < (face ? 0.35 : 0.5) ? 0 : Math.random() * (face ? 150 : 70); if (face) { rr = 1.7; gg = 0.35; } d[i] = v * rr; d[i + 1] = v * gg; d[i + 2] = v * gg; d[i + 3] = 255; }
       nx.putImageData(img, 0, 0);
     }
     nsize(); static_();
     function frame() {
       if (!DOS) return;
       tick++;
-      if (tick % 4 === 0) static_();
-      if (tick % 7 === 0) { drawFigure(fig, seed + (Math.random() * 6 | 0)); fig.style.transform = Math.random() < 0.3 ? "translate(" + ((Math.random() * 3 | 0) - 1) + "px," + ((Math.random() * 3 | 0) - 1) + "px)" : ""; }
+      if (tick % (face ? 2 : 4) === 0) static_();
+      if (face) {
+        gx += (tgx - gx) * 0.12; gy += (tgy - gy) * 0.12;
+        seenFace(fig, SN, gx, gy);
+        fig.style.transform = Math.random() < 0.12 ? "translate(" + ((Math.random() * 5 | 0) - 2) + "px,0)" : "";
+      } else if (tick % 7 === 0) { drawFigure(fig, seed + (Math.random() * 6 | 0)); fig.style.transform = Math.random() < 0.3 ? "translate(" + ((Math.random() * 3 | 0) - 1) + "px," + ((Math.random() * 3 | 0) - 1) + "px)" : ""; }
       if (tick % 18 === 0) nm.textContent = Math.random() < 0.7 ? NAMES[0] : NAMES[1 + (Math.random() * 4 | 0)];
       timer = setTimeout(function () { raf = requestAnimationFrame(frame); }, 1000 / 30);
     }
@@ -3376,6 +3402,11 @@
     if (lsGet(K_EYE) === "1" && !b.classList.contains("e3-eye")) { b.classList.add("e3-eye"); b.innerHTML = EYE; b.setAttribute("aria-label", "Письмо №∞"); }
   }
   footMark();
+  // owner preview: ?dossier=face opens the rare dossier (his real face), ?dossier=1 the ordinary one
+  try {
+    var DQ = new URLSearchParams(location.search).get("dossier");
+    if (DQ) setTimeout(function () { dossier(DQ === "face"); }, 400);
+  } catch (e) { /* old browser */ }
   // owner preview: ?seehim=1&ft=<seconds> opens the special seed's footage frozen at that moment
   try {
     if (seeHim() && new URLSearchParams(location.search).get("ft")) setTimeout(footage, 300);

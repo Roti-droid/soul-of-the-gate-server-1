@@ -258,6 +258,10 @@ body.e2-lock{overflow:hidden}
 .e2-word{display:inline-flex;gap:3px;white-space:nowrap}
 .e3-g{width:12px;height:17px;fill:#d8c8c8;filter:drop-shadow(0 0 3px rgba(255,40,60,.35))}
 .e3-ru{margin:0;font:14px/1.5 var(--tx);color:#c9c9c9}
+.e3-seen .e3-noise{opacity:.5}.e3-seen .e3-red{background:radial-gradient(ellipse at center,rgba(150,0,20,.08) 20%,rgba(150,0,20,.7) 100%)}
+.e3-seen .e3-fig{border-color:#4a0d16;box-shadow:0 0 24px rgba(196,0,31,.35)}
+.e3-cx{margin-top:0;border-top:0}.e3-cx .e3-g{fill:#ff1e3c;filter:drop-shadow(0 0 4px rgba(255,30,60,.7))}
+.e3-rx{margin-top:8px;color:#ff3a52;letter-spacing:.5px;animation:nameFlick 2.3s steps(1) infinite}
 .e3-foot{margin:14px 0 0;font:8px/1 var(--px);color:#4a2228;text-align:right;letter-spacing:1px}
 .e3-mark{display:block;margin:14px auto 0;background:none;border:0;padding:6px;cursor:pointer;color:#3a0d14;opacity:.8}
 .e3-mark:hover,.e3-mark:focus-visible{color:#ff1e3c;outline:none}
@@ -303,7 +307,7 @@ body.e2-lock{overflow:hidden}
   *,*::before,*::after{animation:none!important;transition:none!important}
   .reveal{opacity:1;transform:none}
   .gw{opacity:1}
-  .e3-noise{opacity:.18}.e3-red{opacity:.6}
+  .e3-noise{opacity:.18}.e3-red{opacity:.6}.e3-seen .e3-noise{opacity:.3}
 }
 
 /* no text selection / copy callout anywhere except form fields */
