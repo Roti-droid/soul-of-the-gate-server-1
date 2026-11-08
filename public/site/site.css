@@ -518,3 +518,12 @@ img{-webkit-user-drag:none;user-drag:none}
 
 .ch.open .st.paid{color:#ffd23f}
 .fgroup + .fgroup{margin-top:28px}
+
+/* cabinet: «Секреты (проверка)» */
+.ds h3{margin-top:0}
+.ds-about{margin:0 0 14px;font-size:14px}
+.ds-fz{display:block;font:10px/1.4 var(--px);text-transform:uppercase;margin:0 0 12px}
+.ds-fz input{margin-top:8px;font-size:16px;max-width:140px}
+.ds-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}
+.ds-h{font:12px/1.4 var(--px);margin:18px 0 6px}
+.ds-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}

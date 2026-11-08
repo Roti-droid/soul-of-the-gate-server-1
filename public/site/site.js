@@ -230,7 +230,7 @@
       return;
     }
     gate.hidden = true; body.hidden = false;
-    loadDevFiles(); devCipher();
+    loadDevFiles(); devCipher(); devSecrets();
   }
   function loadDevFiles() {
     var box = $("devFiles");
@@ -659,9 +659,9 @@
         qAt: sp1 ? 10 + cryptoBelow(10001) / 1000 : cryptoBelow(8) === 0 ? 6 + cryptoBelow(24001) / 1000 : -1, qDone: false, q: null };
       if (sp1) laughPlay(laughPlan(), 0.3, 0.12);
       // a cassette: rolled once per round (each tape its own odds), never in the very first round, never with the special seed
-      var played = Number(lsGet(K_PLAYED)) || 0; lsSet(K_PLAYED, String(played + 1));
-      var tid = !sp1 && (played >= 1 || TAPE_DROP) ? tapeRoll() : 0;
-      st.tid = tid; st.tAt = tid ? (TAPE_DROP ? 2 : 5 + cryptoBelow(20001) / 1000) : -1; st.tape = null;
+      var played = Number(lsGet(K_PLAYED)) || 0; if (!pvQuiet()) lsSet(K_PLAYED, String(played + 1));
+      var tid = !sp1 && (played >= 1 || PREV.tapesDrop) ? tapeRoll() : 0;
+      st.tid = tid; st.tAt = tid ? (PREV.tapesDrop ? 2 : 5 + cryptoBelow(20001) / 1000) : -1; st.tape = null;
     }
     function gotTape(id) {
       var s = tstore(); if (!tapeHave(id)) { s.inv.push(id); tsave(); }
@@ -784,7 +784,7 @@
     function end(win) {
       state = "over"; cancelAnimationFrame(raf);
       var sc = score(), nb = sc > best + 1e-9;
-      if (nb) { best = sc; lsSet(K_BEST, best.toFixed(2)); paintBest(); }
+      if (nb) { best = sc; if (!pvQuiet()) lsSet(K_BEST, best.toFixed(2)); paintBest(); }
       beep(win ? 880 : 140, win ? 0.3 : 0.4, win ? "triangle" : "sawtooth", 0.05, win ? 1320 : 60);
       menu('<div class="e2c e2-ttl" aria-label="' + (win ? "Врата затихли" : "Душа дрогнула") + '">' + gl(win ? "THE GATE IS SILENT" : "THE SOUL TREMBLED") + "</div>" +
         '<div class="e2c e2-big" aria-label="' + sc.toFixed(1) + '">' + gl(sc.toFixed(1)) + "</div>" +
@@ -792,10 +792,10 @@
         '<div class="e2-row">' + playBtn("AGAIN", "Ещё раз", "e2-go") + tapesBtn() + "</div>");
       scr.querySelector(".e2-go").focus();
     }
-    function toFootage() { state = "file"; cancelAnimationFrame(raf); close(true); footage(); }
+    function toFootage() { var pv = PREV.seed; state = "file"; cancelAnimationFrame(raf); close(true); footage(pv); }
     function sealed() {
       state = "file"; cancelAnimationFrame(raf); beep(98, 0.9, "sawtooth", 0.05, 49);
-      if (score() > best) { best = score(); lsSet(K_BEST, best.toFixed(2)); paintBest(); }
+      if (score() > best) { best = score(); if (!pvQuiet()) lsSet(K_BEST, best.toFixed(2)); paintBest(); }
       o.classList.add("e2-dim");
       menu('<div class="e2-file"><div class="e2c e2-fnum" aria-label="Запись неизвестна">' + gl("FILE ?? - UNKNOWN") + "</div>" +
         '<button class="e2-q" type="button" aria-label="Вскрыть запись">' + glyphSvg("?", "e2-qg") + "</button>" +
@@ -1025,7 +1025,7 @@
     document.body.classList.add("e2-lock");
 
     function close(quick) {
-      if (!E2) return; E2 = null; state = "closed"; cancelAnimationFrame(raf);
+      if (!E2) return; E2 = null; state = "closed"; cancelAnimationFrame(raf); PREV.seed = false;
       if (FACE) FACE.stop(); laughStop();
       document.removeEventListener("keydown", onKey); document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("visibilitychange", onVis); removeEventListener("resize", fit);
@@ -1065,6 +1065,38 @@
     x.fillStyle = "#000"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#fff";
     lines.forEach(function (l, li) { for (var i = 0; i < l.length; i++) { var g = GLYPH[l[i]]; if (!g) continue; for (var k = 0; k < GW * GH; k++) if (g[k]) x.fillRect(pad + i * cw + (k % GW) * P, pad + li * lh + Math.floor(k / GW) * P, P, P); } });
     return c;
+  }
+  // «Секреты (проверка)»: owner-only previews of every secret; nothing shown here is saved to this browser's progress
+  function devSecrets() {
+    if ($("devSec")) return;
+    var b = el("div", "box ds"); b.id = "devSec";
+    var tb = "";
+    SHELF.forEach(function (id) { tb += '<button type="button" class="btn btn-sm ds-t" data-t="' + id + '">№' + tnum(id) + "</button>"; });
+    b.innerHTML = '<h3>Секреты (проверка)</h3>' +
+      '<p class="muted ds-about"><b>Только для владельца.</b> Открывает секреты сразу, без шансов. Ничего из просмотра не сохраняется в прогресс игрока. Настоящие шансы (сид 1/1 000 000, лицо в досье 1/1 000 000, кассеты, «?» 1/8) не меняются.</p>' +
+      '<label class="ds-fz">Заморозить на секунде (плёнки; пусто — играть)<input type="number" id="dsFz" min="0" max="60" step="0.1" inputmode="decimal" placeholder="—"></label>' +
+      '<div class="ds-row"><button type="button" class="btn btn-sm btn-main" data-a="seed">Особый сид (рожи)</button><button type="button" class="btn btn-sm" data-a="foot">Плёнка сида</button></div>' +
+      '<h4 class="ds-h">Плёнки</h4><div class="ds-grid">' + tb + "</div>" +
+      '<div class="ds-row"><label class="row"><input type="checkbox" id="dsAll"> Все плёнки в архиве (без сохранения)</label><label class="row"><input type="checkbox" id="dsDrop"> Кассета каждый раунд</label><button type="button" class="btn btn-sm" data-a="arch">Открыть мини-игру</button></div>' +
+      '<h4 class="ds-h">Остальное</h4><div class="ds-row"><button type="button" class="btn btn-sm" data-a="why">WHY</button><button type="button" class="btn btn-sm" data-a="diary">Дневник</button>' +
+      '<button type="button" class="btn btn-sm" data-a="dos">Досье</button><button type="button" class="btn btn-sm" data-a="face">Досье с лицом</button><button type="button" class="btn btn-sm" data-a="ltr">Письмо №∞</button></div>';
+    $("devBody").appendChild(b);
+    var fz = function () { var v = $("dsFz").value; PREV.freeze = v === "" ? null : Math.max(0, parseFloat(v) || 0); };
+    var chk = function () { PREV.tapesAll = $("dsAll").checked; PREV.tapesDrop = $("dsDrop").checked; TSTORE = null; };
+    $("dsAll").addEventListener("change", chk); $("dsDrop").addEventListener("change", chk);
+    b.addEventListener("click", function (e) {
+      var t = e.target.closest("button"); if (!t || !b.contains(t)) return;
+      if (t.dataset.t) { fz(); tapePlay(+t.dataset.t, null); return; }
+      var a = t.dataset.a;
+      if (a === "seed") { PREV.seed = true; shardsOpen(); }
+      else if (a === "arch") shardsOpen();
+      else if (a === "foot") { fz(); footage(true); }
+      else if (a === "why") { fz(); tapePlay(0, null, true); }
+      else if (a === "diary") diaryOpen(true);
+      else if (a === "dos") dossier(false, true);
+      else if (a === "face") dossier(true, true);
+      else if (a === "ltr") letter(true);
+    });
   }
   function devCipher() {
     if ($("devCipher")) return;
@@ -1182,8 +1214,10 @@
       return a[0] % n;
     } catch (e) { return Math.floor(Math.random() * n); }
   }
-  function seeHim() { try { return new URLSearchParams(location.search).get("seehim") === "1"; } catch (e) { return false; } }
-  function seedRoll() { return seeHim() || cryptoBelow(1000000) === 0; }   // the special seed: exactly 1 round in 1 000 000
+  // owner previews: set only from the developer cabinet (never from the URL, never on window); nothing a preview shows is saved
+  var PREV = { seed: false, freeze: null, tapesAll: false, tapesDrop: false };
+  function pvQuiet() { return PREV.seed || PREV.tapesAll || PREV.tapesDrop; }
+  function seedRoll() { return PREV.seed || cryptoBelow(1000000) === 0; }   // the special seed: exactly 1 round in 1 000 000
   var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
   var SKIN = ["#14100e", "#2c2420", "#4d433c", "#7a7068", "#a59c92", "#c9c1b6", "#e6e0d6", "#f6f2ea"];
   function drawSeen() {          // → an offscreen 72×112 canvas without the pupils
@@ -1452,7 +1486,7 @@
     };
   }
   var FT = null;
-  function footage() {
+  function footage(pv) {
     if (FT) return;
     var o = el("div", "e4"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись с камеры");
     o.innerHTML = '<div class="e4-view"></div><canvas class="e4-fx" aria-hidden="true"></canvas>' +
@@ -1464,7 +1498,7 @@
     var TL = RM ? { turn: 3, zoom: 4, cut: 6.5, black: 7.1, end: 7.6 } : { turn: 6.2, zoom: 8.2, cut: 13, black: 14, end: 15 };
     var snd = ftSound(), t0 = 0, raf = 0, done = false, beatN = -1, keyN = -1, flashed = false, burst = false, impl = null;
     var SEEN = drawSeen().c, FREEZE = null;
-    try { var fz = new URLSearchParams(location.search).get("ft"); if (seeHim() && fz) FREEZE = Math.max(0, parseFloat(fz) || 0); } catch (e) { /* old browser */ }   // owner preview: ?seehim=1&ft=4 holds that moment
+    if (PREV.freeze != null) { FREEZE = PREV.freeze; PREV.freeze = null; }   // owner preview: hold that moment
     FT = { o: o };
     function osd(t) {
       var s = 11 * 3600 + 47 * 60 + 3 + Math.floor(t);
@@ -1499,7 +1533,7 @@
     function finish() {
       if (done) return; done = true; cancelAnimationFrame(raf); snd.stop(); if (impl) impl.dispose();
       removeEventListener("resize", fsize); document.removeEventListener("keydown", onKey);
-      FT = null; o.remove(); letter();
+      FT = null; o.remove(); letter(pv);
     }
     var onKey = function (e) { if (e.key === "Escape") finish(); };
     o.querySelector(".e4-x").addEventListener("click", function (e) { e.stopPropagation(); finish(); });
@@ -1746,8 +1780,6 @@
   var TX = 11, T0 = 12, TF = 13;    // «???» is the slot after №10; №0 (the invitation) opens the shelf; №∞ appears only after both secrets
   var SHELF = [T0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, TX, TF];
   function tnum(id) { return id === TX ? "???" : id === T0 ? "0" : id === TF ? "∞" : String(id); }
-  function qp(k) { try { return new URLSearchParams(location.search).get(k); } catch (e) { return null; } }
-  var TAPES_ALL = qp("tapes") === "all", TAPE_DROP = qp("tapes") === "drop";
   // the store: f = filed (numbered) tapes, inv = unmarked cassettes waiting in the tray (their ids are hidden from the player)
   var TSTORE = null;
   function tstore() {
@@ -1755,13 +1787,13 @@
     var s = null; try { s = JSON.parse(lsGet(K_TAPES) || "null"); } catch (e) { s = null; }
     var ok = function (a) { return Array.isArray(a) ? a.filter(function (v, i) { return v >= 1 && v <= TAPES.length && (v | 0) === v && a.indexOf(v) === i; }) : []; };
     TSTORE = { f: ok(s && s.f), inv: ok(s && s.inv) };
-    if (TAPES_ALL) TSTORE = { f: TAPES.map(function (_, i) { return i + 1; }), inv: [] };     // every slot, №∞ included
+    if (PREV.tapesAll) TSTORE = { f: TAPES.map(function (_, i) { return i + 1; }), inv: [] };     // every slot, №∞ included
     return TSTORE;
   }
-  function tsave() { if (!TAPES_ALL) lsSet(K_TAPES, JSON.stringify(tstore())); }
+  function tsave() { if (!pvQuiet()) lsSet(K_TAPES, JSON.stringify(tstore())); }
   function tapeHave(id) { var s = tstore(); return s.f.indexOf(id) >= 0 || s.inv.indexOf(id) >= 0; }
   function tapeRoll() {          // one roll per round: each tape its own odds; a tape already owned becomes nothing
-    if (TAPE_DROP) { for (var i = 1; i < TX; i++) if (!tapeHave(i)) return i; return 0; }
+    if (PREV.tapesDrop) { for (var i = 1; i < TX; i++) if (!tapeHave(i)) return i; return 0; }
     var r = cryptoBelow(1000000), acc = 0, ids = [T0, TX, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];     // the odds stay inside: never shown to the player
     for (var j = 0; j < ids.length; j++) { acc += 1000000 / TAPES[ids[j] - 1].odds; if (r < acc) return tapeHave(ids[j]) ? 0 : ids[j]; }
     return 0;
@@ -2070,7 +2102,7 @@
     var ltr = o.querySelector(".e4-ltr"), gname = o.querySelector(".e4-gn"), gT = -1;   // reduced motion: the same tape, shorter
     var S = tapeSound(), t0 = 0, raf = 0, done = false, impl = null, fired = {}, FREEZE = null, order = null, stImg = null;
     var once = function (key, c, fn) { if (c && !fired[key]) { fired[key] = 1; fn(); } };
-    if ((qp("tape") || qp("why")) && qp("ft")) FREEZE = Math.max(0, parseFloat(qp("ft")) || 0);
+    if (PREV.freeze != null) { FREEZE = PREV.freeze; PREV.freeze = null; }   // owner preview: hold that moment
     TP = { o: o };
     function osd(t) {
       if (!TD.tm) { ts.textContent = "░░:░░:░░  " + TD.d; tc.textContent = "SP  ░:░░:" + ("0" + Math.floor(t % 60)).slice(-2); return; }
@@ -3111,8 +3143,8 @@
     if (page) PARC = me; else ARC = me;
     function render(lit, born) {
       var s = tstore();
-      var dOk = allTapes() || TAPES_ALL;
-      if (dOk && book.hidden) { book.hidden = false; if (lsGet(K_DIARY) !== "1" && !TAPES_ALL) { lsSet(K_DIARY, "1"); book.classList.add("born"); setTimeout(function () { toast("Открыт дневник"); }, 300); } }
+      var dOk = allTapes() || PREV.tapesAll;
+      if (dOk && book.hidden) { book.hidden = false; if (lsGet(K_DIARY) !== "1" && !PREV.tapesAll) { lsSet(K_DIARY, "1"); book.classList.add("born"); setTimeout(function () { toast("Открыт дневник"); }, 300); } }
       cs.innerHTML = s.inv.map(function (_, i) { return '<button class="e7-c' + (i === sel ? " sel" : "") + '" type="button" data-i="' + i + '" aria-label="Кассета без подписи ' + (i + 1) + '">' + casSvg("e7-cg") + "</button>"; }).join("");
       hint.textContent = s.inv.length ? "Перетащите кассету в видеомагнитофон (или нажмите на неё, потом на магнитофон)" : "Кассет нет — они иногда выпадают в игре";
       var h = "";
@@ -3228,12 +3260,6 @@
     if (!page) requestAnimationFrame(function () { o.classList.add("on"); o.focus({ preventScroll: true }); });
     return me;
   }
-  try {
-    var tq = qp("tape"), tn = tq === "x" ? TX : tq === "0" ? T0 : tq === "f" ? TF : parseInt(tq, 10);
-    if (tn >= 1 && tn <= TAPES.length) setTimeout(function () { tapePlay(tn, null); }, 300);
-    else if (qp("why") === "1") setTimeout(function () { whyGo(null, true); }, 300);
-    else if (qp("diary") === "1") setTimeout(function () { diaryOpen(); }, 300);
-  } catch (e) { /* old browser */ }
   // ---- «Дневник»: unlocked when every tape is on the shelf. Ten pages in his hand (the cipher only; no translation is shown).
   var DIARY = [
     "BEFORE DAWN A LETTER CAME FROM THE ROYAL SCIENTISTS. NO STAMP. THE NAME ON IT WOULD NOT STAY STILL. I SHOULD HAVE BURNED IT.",
@@ -3255,7 +3281,7 @@
     return '<svg class="e7-bk" viewBox="0 0 12 11" shape-rendering="crispEdges" aria-hidden="true">' + r + "</svg>";
   }
   var DIA = null;
-  function diaryOpen() {
+  function diaryOpen(pv) {
     if (DIA) return;
     var o = el("div", "e8"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Дневник");
     o.innerHTML = '<div class="e8-book"><div class="e8-page"></div><div class="e8-nav"><button class="e8-prev" type="button" aria-label="Предыдущая страница">' + glyphSvg(">", "eg") + '</button><span class="e8-no"></span>' +
@@ -3267,7 +3293,7 @@
     function paint() {
       fill(pg, i); no.textContent = (i + 1) + " / " + DIARY.length;
       o.querySelector(".e8-prev").disabled = i === 0; o.querySelector(".e8-next").disabled = i === DIARY.length - 1;
-      if (i === DIARY.length - 1) lsSet(K_FEAR, "1");
+      if (i === DIARY.length - 1 && !pv) lsSet(K_FEAR, "1");
     }
     function turn(d) {
       var j = i + d; if (turning || j < 0 || j >= DIARY.length) return;
@@ -3294,9 +3320,9 @@
   // ---- the letter: «ПИСЬМО №∞»
   var LETTER = "TO MY FAMILY. I DO NOT SLEEP ANYMORE. WHEN I DO, I DREAM OF THE GATE. A RED HEART IS BEATING INSIDE IT. IT CALLS ME BY A NAME I DO NOT REMEMBER. MY HANDS SHAKE. SOMETIMES I FALL AND WAKE UP HOURS LATER ON THE LAB FLOOR. THE OTHERS SAY I SPEAK IN SYMBOLS NOW. I THINK I AM BECOMING SOMETHING ELSE. IF I DIE, DO NOT LOOK FOR MY BODY. LOOK FOR THE LIGHT BEHIND THE GATE. - D.";
   var LTR = null;
-  function letter() {
+  function letter(pv) {
     if (LTR) return;
-    lsSet(K_SEEN, "1"); lsSet(K_EYE, "1"); footMark();
+    if (!pv) { lsSet(K_SEEN, "1"); lsSet(K_EYE, "1"); footMark(); }
     var o = el("div", "e3 e3-letter"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Письмо №∞");
     o.innerHTML = '<div class="e3-red" aria-hidden="true"></div><div class="e3-card e5-card"><p class="e3-head">ПИСЬМО №∞</p>' +
       '<div class="e3-cipher e5-text" aria-label="Письмо шифром Врат">' + lineSvg(LETTER, "e3-g e5-g") + "</div>" +
@@ -3329,10 +3355,10 @@
     }
     if (Math.random() < 0.06) { x.fillStyle = "rgba(196,0,31,.35)"; x.fillRect(0, 0, 72, 112); }
   }
-  function dossier(face) {
+  function dossier(face, pv) {
     if (DOS) return;
     if (face === undefined) face = cryptoBelow(1000000) === 0;   // exactly 1 opening in 1 000 000: the face is not scratched out
-    lsSet(K_SEEN, "1"); footMark();
+    if (!pv) { lsSet(K_SEEN, "1"); footMark(); }
     var o = el("div", "e3" + (face ? " e3-seen" : "")); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись: неизвестно");
     o.innerHTML = '<canvas class="e3-noise" aria-hidden="true"></canvas><div class="e3-red" aria-hidden="true"></div>' +
       '<div class="e3-card"><p class="e3-head">ЗАПИСЬ №░░ · КОРОЛЕВСКАЯ СТРАЖА · ЛАБОРАТОРИЯ</p>' +
@@ -3402,16 +3428,6 @@
     if (lsGet(K_EYE) === "1" && !b.classList.contains("e3-eye")) { b.classList.add("e3-eye"); b.innerHTML = EYE; b.setAttribute("aria-label", "Письмо №∞"); }
   }
   footMark();
-  // owner preview: ?dossier=face opens the rare dossier (his real face), ?dossier=1 the ordinary one
-  try {
-    var DQ = new URLSearchParams(location.search).get("dossier");
-    if (DQ) setTimeout(function () { dossier(DQ === "face"); }, 400);
-  } catch (e) { /* old browser */ }
-  // owner preview: ?seehim=1&ft=<seconds> opens the special seed's footage frozen at that moment
-  try {
-    if (seeHim() && new URLSearchParams(location.search).get("ft")) setTimeout(footage, 300);
-    else if (seeHim()) setTimeout(shardsOpen, 400);   // ?seehim=1 → straight into the mini-game, special seed forced
-  } catch (e) { /* old browser */ }
 
   // ---------------------------------------------------------------- start
   api("me").then(function (r) {
