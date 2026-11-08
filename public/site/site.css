@@ -116,6 +116,12 @@ main{min-height:70vh}
 @keyframes glitch{0%{text-shadow:2px 0 var(--soul),-2px 0 #3cf}50%{text-shadow:-2px 0 var(--soul),2px 0 #3cf;transform:skewX(-8deg)}100%{text-shadow:none}}
 @keyframes glitchImg{50%{transform:translateX(3px);filter:drop-shadow(-3px 0 var(--soul)) drop-shadow(3px 0 #3cf)}}
 
+.ch.locked.soon img{opacity:.35}
+.ch.locked.soon:hover{animation:none}
+.ch.locked.soon:hover img{animation:soonFlick .9s steps(1) infinite}
+@keyframes soonFlick{0%{opacity:.35}20%{opacity:.6}35%{opacity:.25}55%{opacity:.5}75%{opacity:.3}100%{opacity:.35}}
+.ch.open img.px-ch,.ch.open img[src*="/ch"]{filter:none}
+
 /* files */
 .files{display:flex;flex-direction:column;gap:28px}
 .fgroup h3{font:13px/1.4 var(--px);margin:0 0 12px;color:var(--gold)}

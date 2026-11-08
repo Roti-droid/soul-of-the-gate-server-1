@@ -78,8 +78,11 @@
           var name = i === 1 ? "Soul of the Gate — Chapter&nbsp;1" : esc(f.game || "Soul of the Gate") + " — Chapter&nbsp;" + i;
           var paidOnly = f && (FILES || []).filter(function (x) { return +x.chapter === i; }).every(function (x) { return x.paid; });
           var st = paidOnly && i !== 1 ? '<span class="st paid">КУПИТЬ</span>' : '<span class="st">ДОСТУПНА</span>';
-          h += '<a class="ch open reveal" href="/download?ch=' + i + '" data-link><span class="num">' + n + '</span><img src="/site/img/gate.svg" alt="">' +
+          h += '<a class="ch open reveal" href="/download?ch=' + i + '" data-link><span class="num">' + n + '</span><img src="/site/img/' + (i >= 2 && i <= 5 ? "ch" + i : "gate") + '.svg" alt="">' +
             '<span class="name">' + name + '</span>' + st + '</a>';
+        } else if (i >= 2 && i <= 5) {
+          h += '<div class="ch locked soon reveal" aria-label="Глава ' + i + ': скоро"><span class="num">' + n + '</span><img src="/site/img/ch' + i + '.svg" alt="">' +
+            '<span class="name">???</span><span class="st">СКОРО</span></div>';
         } else {
           h += '<div class="ch locked reveal" aria-label="Глава ' + i + ': скоро"><span class="num">' + n + '</span><img src="/site/img/locked.svg" alt="">' +
             '<span class="name">???</span><span class="st">СКОРО</span></div>';
