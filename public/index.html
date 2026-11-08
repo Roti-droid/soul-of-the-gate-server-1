@@ -5460,7 +5460,7 @@ var Boss = (function () {
   // attack scripts per phase (looped); 'core' = a charged core drop (the weak-point window)
   var SCRIPT = [
     ['laser1', 'core', 'laser2', 'bolt', 'core', 'laser1', 'laser2', 'core'],
-    ['wave', 'laser2', 'core', 'cblue', 'saws', 'bolt', 'core', 'corange', 'wave', 'laser1', 'core', 'cpair'],   // 2.3.14: blue / orange beams (cbeams.js)
+    ['wave', 'laser2', 'core', 'laser1', 'saws', 'bolt', 'core', 'bolt2', 'wave', 'laser1', 'core', 'laser2'],   // 2.3.15: the blue / orange beams (2.3.14) are out of the normal game
     ['drones', 'core', 'sweep', 'bolt2', 'wave', 'core', 'saws', 'sweep', 'drones', 'core']
   ];
   var GAP = [1.85, 1.65, 1.5];                  // seconds between attacks (×0.85 on Хардкор)
@@ -16050,7 +16050,7 @@ var Knight = (function () {
     for (var c = 0; c < n; c++) {
       var kind = isOrb ? 'orb' : pickKind(c > 0);
       if (!isOrb && !st.opened) { kind = 'sweep'; st.opened = true; }       // opening move: a full-width low blade (a passive player falls at once)
-      else if (!isOrb && c === 0 && kind !== 'last' && typeof CB !== 'undefined' && (st.cbN = (st.cbN || 0) + 1) % 3 === 2) kind = 'cbeam';   // 2.3.14: every 3rd move opens with a beam volley (outside KN POOL: knsim.js stays valid)
+      // 2.3.15: no beam volleys (cbeams.js blue / orange beams are mods-only now)
       st.kinds[kind] = (st.kinds[kind] || 0) + 1;
       var sp = attack(rn, kind, d);
       d += sp + v * CH_GAP[st.phase];
@@ -17994,7 +17994,7 @@ var Story = (function () {
     get hold() { return hold; },
     get state() { return { stage: S().stage, shards: S().shards, darkKnightPending: S().darkKnightPending, gave: S().gave, hold: hold, gate: R1.sty && R1.sty.gate ? R1.sty.gate.mode || 'sealed' : '' }; },
     active: active,
-    blocks: function (rn) { return on(rn) && active(); },
+    blocks: function () { return false; },   // 2.3.15: the shard quest no longer switches off dark crystals / bosses
     canOffer: function () { var s = S().stage; return !s || s === 'offer'; },
     LINES_OFFER: L_OFFER,
     begin: function (rn) {
@@ -18004,7 +18004,12 @@ var Story = (function () {
     },
     offer: function () { if (!S().stage) { S().stage = 'offer'; save(); } },
     collect: function (rn, o) {
-      var s = S(); if (s.stage !== 'shards') return;
+      var s = S();
+      if (s.stage !== 'shards') {                                    // 2.3.15: outside the quest a shard is a bonus (replays / key already made)
+        s.lsTotal = (s.lsTotal || 0) + 1; var add = rn && rn.gemGain ? rn.gemGain(10) : 10; if (rn) rn.gems += add;
+        if (rn && o) rn.burst(o.x, 1.3, 0, 40, [new T.Color(0x7ff8ff), C_WHITE, new T.Color(0xff5ae0)], 4, 12, 1.0, 4);
+        Guard.safe('story.sfx', function () { SFX.power(); }); vibrate([30, 30, 60]); toast(tr('Осколок света') + ' +' + add, 2200); save(); return;
+      }
       s.shards = Math.min(SHARD_N, s.shards + 1);
       if (rn && o) { rn.burst(o.x, 1.3, 0, 40, [new T.Color(0x7ff8ff), C_WHITE, new T.Color(0xff5ae0)], 4, 12, 1.0, 4); rn.shake = Math.max(rn.shake, 0.2); }
       Guard.safe('story.sfx', function () { SFX.power(); SFX.record(); }); vibrate([30, 30, 60]);
@@ -18029,11 +18034,15 @@ var Story = (function () {
         Dlg.play(L_OFFER_LATE, function () { hold = false; Story.begin(rn); });
         return;
       }
-      if (!active()) return;
-      for (var i = rn.obs.length - 1; i >= 0; i--) if (rn.obs[i].type === OB_DARK) rn.freeOb(i);   // no dark crystals during the quest
-      var km = Math.floor(rn.travel / 1000);
-      if (km !== y.km) { if (km === y.km + 1 && s.stage === 'shards' && Math.random() < SHARD_CHANCE) y.pend = true; y.km = km; }
-      if (y.pend && s.stage === 'shards') placeShard(rn);
+      // 2.3.15: light shards appear after the GOOD ending of the Light Knight (SAVE.quest.winMercy), ~1 per km, never > 2.3 km apart (pity)
+      if (SAVE.quest && SAVE.quest.winMercy) {
+        if (y.nextShard == null) y.nextShard = rn.travel + 150 + Math.random() * 650;
+        if (!y.pend && rn.travel >= y.nextShard) y.pend = true;
+        if (y.pend && !(typeof DarkWorld !== 'undefined' && DarkWorld.enabled) && !(typeof Boss !== 'undefined' && Boss.active(rn)) && !(typeof Knight !== 'undefined' && Knight.active(rn)) && !(typeof DarkKnight !== 'undefined' && DarkKnight.active(rn))) {
+          placeShard(rn);
+          if (!y.pend) y.nextShard = rn.travel + Math.min(2200, 300 + 700 * -Math.log(1 - Math.random()));
+        }
+      }
       // ---- the gate (only with the key)
       if (s.stage === 'key' && !y.done) {
         if (!y.gate && rn.travel >= GATE_AT - 260 && rn.travel < GATE_AT - 30) { y.gate = rn.spawnOb(OB_GATE, 1, GATE_AT); y.gate.g.position.x = 0; }
@@ -21136,6 +21145,11 @@ $('tSync').addEventListener('click', function (e) { e.stopPropagation(); SAVE.se
 
 /* news.js — 1.8.7: «Новости» window (shown on every launch + menu button). Newest first. */
 var NEWS = [
+  { v: '2.3.15', date: '08.11.2026',
+    added: [],
+    fixed: [{ ru: 'Тёмные кристаллы снова появляются в забеге (задание «Осколки света» их больше не отключает)', en: 'Dark crystals spawn in runs again (the Light Shards quest no longer switches them off)' },
+            { ru: 'Осколки света: после доброй победы над Светлым Рыцарем примерно по одному на километр, не реже одного на 3 км', en: 'Light Shards: after the good ending with the Light Knight about one per km, at least one every 3 km' },
+            { ru: 'Голубые и оранжевые лучи убраны из обычного забега', en: 'Blue and orange beams removed from the normal run' }] },
   { v: '2.3.14', date: '08.11.2026',
     added: [{ ru: 'Голубые и оранжевые лучи: голубой не трогай в движении, оранжевый проходи в движении', en: 'Blue and orange beams: stay still for blue, keep moving for orange' },
             { ru: '«Создать» — отмена/возврат, 3D-предпросмотр, профиль автора; Ресурс-паки с Художником; Моды для всей игры', en: '«Create» — undo/redo, 3D preview, author profile; resource packs with a painter; game-wide mods' },
@@ -24499,7 +24513,8 @@ var CB = (function () {
       if (first === OB_CBLUE) { lineAround(c, L, at, 2, at + 5); if (b) arcOver(c, L, at + gap); } else { arcOver(c, L, at); if (b) lineAround(c, L, at + gap, at + gap - 5, at + gap + 8); }
       return runOut(c, at + (b ? gap : 0)); } }
   ];
-  PATS.forEach(function (p) { PATTERNS.push(p); if (typeof MECH !== 'undefined') MECH[p.id] = 'beam'; });
+  S.PATS = PATS;   // 2.3.15: NOT added to the normal PATTERNS any more (mods only: PATTERNS.push(...CB.PATS) to opt in)
+  PATS.forEach(function (p) { if (typeof MECH !== 'undefined') MECH[p.id] = 'beam'; });
 
   // ---------------------------------------------------------------- bosses: a beam volley at world distance d; returns its span (m)
   // n beams, colours alternate from a random start, spacing ≥ 0.85 s at the fight speed (cbsim.js proves a path for every volley)
@@ -25331,7 +25346,9 @@ var Account = (function () {
   function data() { var d = {}; for (var k in SAVE) if (!SYNC_SKIP[k]) d[k] = SAVE[k]; return d; }
   function apply(d) {
     if (!d || typeof d !== 'object') return;
+    var wm = SAVE.quest && SAVE.quest.winMercy, wc = SAVE.quest && SAVE.quest.winCore;   // 2.3.15: a Light Knight victory is never lost to an older cloud copy
     for (var k in d) if (!SYNC_SKIP[k]) SAVE[k] = d[k];
+    if (SAVE.quest && typeof SAVE.quest === 'object') { if (wm) SAVE.quest.winMercy = 1; if (wc) SAVE.quest.winCore = 1; }
     origSave(); refreshCoins(); if (typeof renderDiff === 'function') renderDiff(); if (window.applyLook) Guard.safe('acc.look', window.applyLook);
   }
   function online() { return Net.status === 'ok'; }
@@ -48199,7 +48216,7 @@ var Mods4 = (function () {
 if (typeof window !== 'undefined') window.Mods4 = Mods4;
 
 /* admin.js — hidden local cheat panel (7 taps on the version in Настройки + PIN; 2.3.9: only ?debug / cr_debug=1 / the owner) */
-var APP_VERSION = '2.3.14';
+var APP_VERSION = '2.3.15';
 var ADMIN_PIN_HASH = 0x50dd3b75; // fnv1a('cr-admin:2580')
 var Admin = { unlocked: false, god: false, fps: false, hitbox: false, cheated: false };
 /* 2.3.12 (owner 07.11): the 7 taps + PIN panel is back in the app for tests. Any cheat used = Admin.cheated for this session (app run):
