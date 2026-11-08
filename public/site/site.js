@@ -1308,8 +1308,8 @@
     torso.add(lathe([[0.001, -0.05], [0.24, -0.045], [0.232, 0.1], [0.216, 0.3], [0.232, 0.5], [0.25, 0.64], [0.246, 0.72], [0.215, 0.78], [0.14, 0.815], [0.06, 0.83], [0.001, 0.83]], cm));
     var waist = add(new T.SphereGeometry(1, 32, 16), cm, [0, 0.0, 0]); waist.scale.set(0.245, 0.13, 0.178); torso.add(waist);   // a rounded waist: no gap when he leans
     var neck = new T.Group(); neck.position.y = 0.8; torso.add(neck);
-    neck.add(add(new T.CylinderGeometry(0.042, 0.052, 0.26, 18), km, [0, 0.12, 0]));
-    var head = add(new T.SphereGeometry(1, 40, 30), km, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
+    neck.add(add(new T.CylinderGeometry(0.044, 0.054, 0.18, 18), km, [0, 0.08, 0]));
+    var head = add(new T.SphereGeometry(1, 40, 30), km, [0, 0.34, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
     var arms = [-1, 1].map(function (sd) {
       var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
       sh.add(add(new T.SphereGeometry(0.064, 18, 12), cm, [0, -0.01, 0]));
@@ -2400,7 +2400,7 @@
       var torch = new T.Group(); torch.position.set(0, -0.08, 0.01); fig.arms[0].hand.add(torch);      // the welding torch in his glove
       torch.add(add(new T.CylinderGeometry(0.016, 0.018, 0.16, 12), M({ color: 0x3a3226, roughness: 0.6 }), [0, -0.02, 0]));
       torch.add(add(new T.CylinderGeometry(0.007, 0.012, 0.12, 10), M({ color: 0x9a8a6a, roughness: 0.3, metalness: 0.9 }), [0, -0.14, 0.03], [0.5, 0, 0]));
-      var mask = add(new T.BoxGeometry(0.2, 0.22, 0.03), M({ color: 0x15171a, roughness: 0.4, metalness: 0.3 }), [0, 0.42, 0.16], [-0.1, 0, 0]); fig.neck.add(mask);   // a welding visor over the blank face
+      var mask = add(new T.BoxGeometry(0.2, 0.22, 0.03), M({ color: 0x15171a, roughness: 0.4, metalness: 0.3 }), [0, 0.34, 0.16], [-0.1, 0, 0]); fig.neck.add(mask);   // a welding visor over the blank face
       var last = 0, heat = 0;
       D.frame = function (t) {
         var dt = Math.min(0.05, Math.max(0, t - last)); last = t;
@@ -2865,7 +2865,7 @@
       var holder = new T.Group(); holder.position.set(-0.5, 0, -2.75); holder.rotation.y = Math.PI - 0.1; scene.add(holder); holder.add(fig.g);   // feet toward the gate, the head toward the door
       fig.g.position.set(0, 0.19, 0); fig.g.rotation.set(-Math.PI / 2, 0, 0.06);
       fig.head.visible = false; fig.neck.children[0].material = darkM;
-      var sk = new T.Group(); sk.position.set(0, 0.42, 0.02); fig.neck.add(sk);
+      var sk = new T.Group(); sk.position.set(0, 0.34, 0.02); fig.neck.add(sk);
       var SG = skullGeo(T); dispose.push(SG.c, SG.j);
       var skM = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0 }); dispose.push(skM);
       sk.add(add(SG.c, skM));
