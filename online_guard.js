@@ -14,7 +14,8 @@
 // Paid codes (bought with Stars) are kept unless the rollback is for payment fraud.
 
 import { accCall } from "./accounts.js";
-import { isOwnerId } from "./accounts_guard.js";
+import { isOwnerId, cleanScope } from "./accounts_guard.js";
+import { noticeAdd, noticeLift, noticeWarnSeen } from "./online_notice.js";   // punishment notices in the ping answer
 
 const now = () => Math.floor(Date.now() / 1000);
 const ACC_RE = /^[0-9a-f]{12}$/;
@@ -82,7 +83,7 @@ export const ACC_ROUTES = {
     if (r.ok) for (const k of [...this.authCache.keys()]) if (k.startsWith(body.id + ":")) this.authCache.delete(k);
     return r;
   },
-  async "POST /acc/warn_ack"({ body, ip }) { return fwd(this, "warn_ack", { id: body.id, secret: body.secret }, ip); },
+  async "POST /acc/warn_ack"({ body, ip }) { const r = await fwd(this, "warn_ack", { id: body.id, secret: body.secret }, ip); if (r.ok) noticeWarnSeen(this, body.id); return r; },
   async "POST /acc/pw_set"({ body, ip }) {
     const r = await fwd(this, "pw_set", { id: body.id, secret: body.secret, old: typeof body.old === "string" ? body.old : null, pw: body.pw }, ip);
     if (r.ok) { this.authCache.clear(); godRevokeAll(this, body.id); }
@@ -96,7 +97,10 @@ function rewardParts(r, into) {
   if (g > 0) into.gems += g;
   if (Number.isInteger(r.dark) && r.dark > 0) into.dark += r.dark;
   for (const s of [r.skin, ...(Array.isArray(r.skins) ? r.skins : [])]) if (typeof s === "string" && s && !into.skins.includes(s)) into.skins.push(s);
-  for (const k of ["frames", "trails"]) for (const x of Array.isArray(r[k]) ? r[k] : []) if (typeof x === "string" && !into[k].includes(x)) into[k].push(x);
+  for (const k of ["frames", "trails", "deaths"]) {   // 2.3.14: + deaths; premium-track inbox items carry one trail / death / frame
+    const one = r[k.slice(0, -1)];
+    for (const x of [one, ...(Array.isArray(r[k]) ? r[k] : [])]) if (typeof x === "string" && x && !into[k].includes(x)) into[k].push(x);
+  }
   if (typeof r.title === "string" && !into.titles.includes(r.title)) into.titles.push(r.title);
 }
 
@@ -120,7 +124,7 @@ export async function rollback(self, b) {
   const fraud = b.fraud === true;
   // all awaits first (capsules from Chest3), then the synchronous part
   const caps = await chest3Revoke(self.env, b.to, from, until);
-  const back = { gems: 0, dark: 0, skins: [], frames: [], trails: [], titles: [] };
+  const back = { gems: 0, dark: 0, skins: [], frames: [], trails: [], deaths: [], titles: [] };
   let cancelled = 0, taken = 0, keptPaid = 0, passOff = false;
   const rows = self.rows("SELECT * FROM rewards WHERE acc = ? AND at >= ? AND at <= ? AND revoked IS NULL ORDER BY n", b.to, from, until);
   for (const r of rows) {
@@ -137,7 +141,7 @@ export async function rollback(self, b) {
     self.sql.exec("UPDATE rewards SET revoked = ? WHERE n = (SELECT MAX(n) FROM rewards WHERE acc = ?)", t, b.to);
   }
   if (passOff && fraud) { try { await accCall(self.env, "pass_grant", { acc: b.to, src: "god:fraud", on: false }); } catch (e) { /* the owner can switch it off by hand */ } }
-  const any = back.gems || back.dark || back.skins.length || back.frames.length || back.trails.length || back.titles.length;
+  const any = back.gems || back.dark || back.skins.length || back.frames.length || back.trails.length || back.deaths.length || back.titles.length;
   const why = typeof b.reason === "string" && b.reason.trim() ? b.reason.trim().slice(0, 120) : null;
   if (any) self.sql.exec("INSERT INTO inbox (acc, kind, payload, at) VALUES (?, 'revoke', ?, ?)", b.to, JSON.stringify({ ...back, reason: why, from, until }), t);
   let places = { daily: 0, season: 0 };
@@ -160,13 +164,17 @@ export const GUARD_GOD = {
     if (!PTYPE.includes(b.type)) return { err: "bad_type" };
     let until = Number.isInteger(b.until) ? b.until : null;
     if (until == null && Number.isFinite(b.days) && b.days > 0) until = now() + Math.round(b.days * DAY);
-    const r = await accCall(this.env, "pun_set", { to: b.to, type: b.type, until, reason: b.reason, by: "god" });
+    // 07.11 scope (suspend / warn): ["raid","push","ghost","creator","season","nick"] or "all" / none = all online; ban = everything
+    const scope = (b.type === "suspend" || b.type === "warn") && b.scope != null ? cleanScope(b.scope) : null;
+    if (b.scope != null && b.scope !== "all" && !(Array.isArray(b.scope) && b.scope.includes("all")) && (b.type === "suspend" || b.type === "warn") && !scope) return { err: "bad_scope" };
+    const r = await accCall(this.env, "pun_set", { to: b.to, type: b.type, until, reason: b.reason, by: "god", scope });
     if (!r || !r.ok) return { err: (r && r.err) || "server" };
     this.profile(b.to);
     if (b.type === "perm") this.sql.exec("UPDATE profiles SET banned = 1, ban_reason = ? WHERE id = ?", typeof b.reason === "string" ? b.reason.slice(0, 120) : null, b.to);
     this.authCache.clear();
     let rb = null;
     if (b.revoke) rb = await rollback(this, { to: b.to, from: b.from, days: b.vdays, fraud: b.fraud, reason: b.reason, places: b.places });
+    noticeAdd(this, b.to, r.pun, rb);   // the player sees it within seconds (POST /ping → notices)
     return { ok: true, to: b.to, pun: r.pun, active: r.active, rollback: rb };
   },
   async lift(b) {
@@ -174,7 +182,7 @@ export const GUARD_GOD = {
     const r = await accCall(this.env, "pun_lift", { to: b.to });
     if (!r || !r.ok) return { err: (r && r.err) || "server" };
     this.sql.exec("UPDATE profiles SET banned = 0, ban_reason = NULL WHERE id = ?", b.to);
-    this.authCache.clear();
+    this.authCache.clear(); noticeLift(this, b.to);
     return { ok: true, to: b.to, lifted: r.lifted };
   },
   async pcard(b) {
@@ -201,7 +209,7 @@ export const GUARD_GOD = {
   async evasion(b) {
     if (!ACC_RE.test(b.to || "")) return { err: "bad_to" };
     const r = await accCall(this.env, "pun_evasion", { to: b.to, reason: b.reason, by: "god" });
-    if (r && r.ok) { for (const id of r.banned || []) { this.profile(id); this.sql.exec("UPDATE profiles SET banned = 1, ban_reason = 'обход бана' WHERE id = ?", id); } this.authCache.clear(); }
+    if (r && r.ok) { for (const id of r.banned || []) { this.profile(id); this.sql.exec("UPDATE profiles SET banned = 1, ban_reason = 'обход бана' WHERE id = ?", id); noticeAdd(this, id, { type: "perm", reason: ("Обход бана" + (typeof b.reason === "string" && b.reason.trim() ? ": " + b.reason.trim() : "")).slice(0, 200) }, null); } this.authCache.clear(); }
     return r;
   },
   async pw_clear(b) {

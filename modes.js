@@ -5,7 +5,7 @@
 //   GET  /api/v2/modes/ghost?track=&acc= | &nick= | &top=1   one ghost: {acc, nick, skin, trail, ms, inp}
 //   POST /api/v2/modes/ghost_submit {id,secret,track,inp,ms,vs?,skin?,trail?}   a finished run (inputs) → re-simulated here
 //   POST /api/v2/modes/ghost_me     {id,secret}       my bests on today's tracks + today's rewards
-//   POST /api/v2/modes/push_find    {id,secret,dev?,size:2|4}   → {wait:true, n} (poll every ~1.5 s) | {match, ticket, size}
+//   POST /api/v2/modes/push_find    {id,secret,dev?,size:2|4|8}   → {wait:true, n} (poll every ~1.5 s) | {match, ticket, size}
 //   POST /api/v2/modes/push_cancel  {id,secret}
 //   POST /api/v2/modes/push_me      {id,secret}       rating, games, rewarded wins today
 //   GET  /api/v2/modes/push_top                       the 20 best ratings
@@ -27,9 +27,11 @@
 // PushMatch protocol (JSON text frames ≤ 1 KB):
 //   C→S {t:'join', id, secret, ticket, skin?, trail?}   S→C {t:'joined', you, size, players:[{slot,nick,skin,trail,r,on}], seed, phase, round, score, now, tps}
 //   C→S {t:'in', q, dx, dy}  a dash (world direction, any length)      C→S {t:'br', q, on:0|1}  brace
+//   C→S {t:'jp', q}  a jump (2.3.14)      C→S {t:'em', e:0..3}  an emote (≤ 1 per 1.5 s) → S→C {t:'em', s:slot, e}
 //   C→S {t:'ping', c}  S→C {t:'pong', c, s}             C→S {t:'leave'}
 //   S→C {t:'round', n, at, seed, score}   (round world n starts at server time `at`; tick 0 = at)
-//   S→C {t:'s', k, st, ps:[[slot, x, y, vx, vy, brace, cd, alive, ack]]}  every 2 ticks; x … in mm, mm/s
+//   S→C {t:'s', k, st, ps:[[slot, x, y, vx, vy, brace, cd, alive, ack, h, vh, dsh, jcd]], ev?:[[kind, a, b, s, x, y]]}  every 2 ticks;
+//        x … h in mm, mm/s; ev = the physics events since the last snapshot (hits, bumpers, falls, beams, dashes, jumps — for effects)
 //   S→C {t:'rend', n, win, score}    S→C {t:'end', ranks:[slot…], res:{slot:{r, d, gems, why}}}   S→C {t:'pl', players}
 //   S→C {t:'err', e}  close 4001 auth, 4003 refused, 4005 replaced (another tab), 4008 flood
 
@@ -180,8 +182,8 @@ export class ModesHub {
       if (a.busy) return json({ err: "busy" }, 503);
       if (!a.ok) return json({ err: "auth" }, 401);
       if (!this.limit("acc:" + id, 60, 60)) return json({ err: "rate" }, 429);
-      const g = gate(a, "online", this.env);
-      if (g) return json({ err: g.err, pun: g.pun || null, terms_v: g.terms_v }, 403);
+      const g = gate(a, /^ghost_/.test(op) ? "ghost" : /^push_/.test(op) ? "push" : "online", this.env);   // 07.11 scoped suspensions
+      if (g) return json({ err: g.err, pun: g.pun || null, terms_v: g.terms_v, need: g.need, text: g.text }, 403);
       if (op === "ghost_me") return json(this.ghostMe(id));
       if (op === "push_me") return json(this.pushMe(id, a.nick));
       if (op === "push_cancel") { this.queue.delete(id); return json({ ok: true }); }
@@ -290,7 +292,7 @@ export class ModesHub {
     return { ok: true, r: r.r, games: r.games, wins: r.wins, today: w, dayWins: MODES.push.dayWins, win: MODES.push.win, place: this.one("SELECT COUNT(*) AS n FROM prate WHERE r > ? AND games > 0", r.r).n + 1 };
   }
   async pushFind(acc, a, b, ip) {
-    const size = b.size === 4 ? 4 : 2;
+    const size = b.size === 8 ? 8 : b.size === 4 ? 4 : 2;   // 2.3.14: 8 = «Большой бой» (a free-for-all of up to 8)
     const me = { acc, ...await whoOf(this.env, a, ip) };
     if (me.dk && !this.limit("dev:" + me.dk, 80, 60)) return [{ err: "rate" }, 429];
     const t = nowS();
@@ -312,7 +314,7 @@ export class ModesHub {
     const group = [ent];
     for (const x of [...this.queue.values()].sort((p, q) => p.first - q.first)) { if (group.length >= size) break; if (fits(x, group)) group.push(x); }
     const oldest = Math.min(...group.map((g) => g.first));
-    const go = group.length >= size || (size === 4 && group.length >= 2 && ms - oldest > MODES.push.fourAfterSec * 1000);
+    const go = group.length >= size || (size > 2 && group.length >= (size === 8 ? 3 : 2) && ms - oldest > MODES.push.fourAfterSec * 1000);
     if (!go) return [{ ok: true, wait: true, n: [...this.queue.values()].filter((x) => x.size === size).length, size }, 200];
     // a match: seats + tickets for everybody in the group (the others get theirs on their next poll — the seat is there)
     let n = (this.kv("n") || 0) + 1; this.kv("n", n);
@@ -426,6 +428,8 @@ export class PushMatch {
     const q = Number.isInteger(m.q) && m.q > 0 && m.q < 1e9 ? m.q : 0;
     if (m.t === "in") { if (q > p.q && Number.isFinite(m.dx) && Number.isFinite(m.dy) && Math.abs(m.dx) <= 1000 && Math.abs(m.dy) <= 1000) { p.q = q; p.dash = [m.dx, m.dy]; } return; }
     if (m.t === "br") { if (q > p.q) { p.q = q; p.brace = m.on ? 1 : 0; } return; }
+    if (m.t === "jp") { if (q > p.q) { p.q = q; p.jump = true; } return; }
+    if (m.t === "em") { if (Number.isInteger(m.e) && m.e >= 0 && m.e < 4 && t - (p.emAt || 0) >= 1500) { p.emAt = t; this.bcast({ t: "em", s: meta.slot, e: m.e }); } return; }
     if (m.t === "leave") { p.left = true; this.drop(p); try { ws.close(1000, "bye"); } catch { /* */ } }
   }
   refuse(ws, e) { this.send(ws, { t: "err", e }); try { ws.close(e === "auth" ? 4001 : e === "replaced" ? 4005 : e === "busy" ? 1013 : 4003, e); } catch { /* */ } }
@@ -437,7 +441,7 @@ export class PushMatch {
       const a = await authAcc(this.env, id, secret);
       if (a.busy) return this.refuse(ws, "busy");
       if (!a.ok) return this.refuse(ws, "auth");
-      const g = gate(a, "online", this.env); if (g) return this.refuse(ws, g.err);
+      const g = gate(a, "push", this.env); if (g) return this.refuse(ws, g.err);
       if (this.phase === "end") { const p0 = this.pl.find((x) => x && x.acc === id); if (p0 && this.endMsg) { this.send(ws, this.endMsg); try { ws.close(1000, "end"); } catch { /* */ } return; } return this.refuse(ws, "ended"); }
       let v; try { v = await hubCall(this.env, "verify", { acc: id, match: this.name, ticket }); } catch { v = { err: "busy" }; }
       if (!v || !v.ok) return this.refuse(ws, v && v.err === "ticket" ? "ticket" : "busy");
@@ -470,14 +474,14 @@ export class PushMatch {
     const p = meta.slot != null ? this.pl[meta.slot] : null;
     if (p && p.ws === ws) this.drop(p);
   }
-  drop(p) { p.ws = null; p.offAt = Date.now(); p.brace = 0; p.dash = null; this.bcast({ t: "pl", players: this.pub() }); }
+  drop(p) { p.ws = null; p.offAt = Date.now(); p.brace = 0; p.dash = null; p.jump = false; this.bcast({ t: "pl", players: this.pub() }); }
   active() { return this.pl.map((p, i) => (p && !p.left ? i : -1)).filter((i) => i >= 0); }
   newRound() {
     this.round += 1; this.rounds += 1;
     this.w = MC.pushNew(this.size, this.seed, this.round);
     this.pl.forEach((p, i) => { if (!p || p.left) { this.w.balls[i].alive = 0; this.w.balls[i].fellAt = 0; } });   // a seat nobody took / a player who left: no ball
     this.phase = "count"; this.roundAt = Date.now() + countSec(this.env) * 1000; this.tickDone = 0;
-    for (const p of this.pl) if (p) { p.dash = null; }
+    for (const p of this.pl) if (p) { p.dash = null; p.jump = false; }
     this.bcast({ t: "round", n: this.round, at: this.roundAt, seed: this.seed, score: this.score, phase: "count" });
   }
   loop() {
@@ -502,6 +506,7 @@ export class PushMatch {
         if (!p) return; const b = this.w.balls[i];
         b.brace = p.ws ? p.brace : 0;
         if (p.dash) { MC.pushDash(this.w, i, p.dash[0], p.dash[1]); p.dash = null; }
+        if (p.jump) { MC.pushJump(this.w, i); p.jump = false; }
       });
       MC.pushStep(this.w); steps++;
       if (this.w.tick % 2 === 0 || this.w.over) this.snap();
@@ -517,8 +522,11 @@ export class PushMatch {
     }
   }
   snap() {
-    const w = this.w, ps = w.balls.map((b, i) => [i, Math.round(b.x * 1000), Math.round(b.y * 1000), Math.round(b.vx * 1000), Math.round(b.vy * 1000), b.brace, b.cd, b.alive, this.pl[i] ? this.pl[i].q : 0]);
-    this.bcast({ t: "s", k: w.tick, st: Date.now(), ps });
+    const w = this.w, ps = w.balls.map((b, i) => [i, Math.round(b.x * 1000), Math.round(b.y * 1000), Math.round(b.vx * 1000), Math.round(b.vy * 1000), b.brace, b.cd, b.alive, this.pl[i] ? this.pl[i].q : 0,
+      Math.round(b.h * 1000), Math.round(b.vh * 1000), b.dsh, b.jcd]);
+    const m = { t: "s", k: w.tick, st: Date.now(), ps };
+    if (w.ev.length) { m.ev = w.ev.slice(-16); w.ev.length = 0; }
+    this.bcast(m);
   }
   async finish(why) {
     if (this.phase === "end") return;

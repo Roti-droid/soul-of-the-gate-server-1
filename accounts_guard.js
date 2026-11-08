@@ -117,6 +117,26 @@ export async function pwCheck(a, pw) {      // always derives (unknown account /
 
 // ---------------------------------------------------------------- punishments
 export const PUN_TYPES = ["warn", "suspend", "ban", "perm"];
+// 07.11 scoped «отстранение»: a suspension / warning may name online features (pun.scope = "raid,push", NULL = all online, as
+// every older row). A ban is always everything. need = the feature an entry point serves; "online" = anything else online.
+export const PUN_SCOPES = ["raid", "push", "ghost", "creator", "season", "nick"];
+export const SCOPE_RU = { raid: "рейда", push: "«Столкни»", ghost: "призрачной гонки", creator: "«Создать»", season: "сезона", nick: "смены ника" };
+export function cleanScope(x) {      // -> null (all online) | ["raid", ...] (known names, the fixed order)
+  const arr = Array.isArray(x) ? x : typeof x === "string" ? x.split(",") : null;
+  if (!arr || arr.includes("all")) return null;
+  const out = PUN_SCOPES.filter((k) => arr.includes(k));
+  return out.length ? out : null;
+}
+const scopeOf = (p) => (p && typeof p.scope === "string" && p.scope ? cleanScope(p.scope) : null);
+export const scopeCovers = (scope, need) => !scope || scope.includes(need);
+// «Отстранён от рейда до 08.11.2026 14:00 UTC. Причина: …» (the game shows its own local time; this is for texts made on the server)
+export function suspText(pun) {
+  if (!pun) return "";
+  const d = pun.until ? new Date(pun.until * 1000).toISOString().slice(0, 16).replace("T", " ") + " UTC" : null;
+  const sc = Array.isArray(pun.scope) && pun.scope.length ? pun.scope.map((k) => SCOPE_RU[k] || k) : null;
+  const what = sc ? "Отстранён от " + (sc.length > 1 ? sc.slice(0, -1).join(", ") + " и " + sc[sc.length - 1] : sc[0]) : "Онлайн-режимы закрыты для аккаунта";
+  return what + (d ? " до " + d : "") + (pun.reason ? ". Причина: " + pun.reason : "");
+}
 const RANK = { suspend: 1, ban: 2, perm: 3 };
 export const GUARD_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS fails (k TEXT NOT NULL, at INTEGER NOT NULL)",
@@ -130,13 +150,28 @@ export const GUARD_SCHEMA = [
 export const GUARD_COLUMNS = ["pw TEXT", "pw_salt TEXT", "pw_it INTEGER", "pw_at INTEGER", "consent_v TEXT", "consent_at INTEGER",
   "consent_age INTEGER", "last_login TEXT"];
 
-export const pubPun = (p) => (p ? { n: p.n, type: p.type, until: p.until == null ? null : p.until, reason: p.reason || null, at: p.at, evasion: !!p.via } : null);
+export const pubPun = (p) => {
+  if (!p) return null;
+  const o = { n: p.n, type: p.type, until: p.until == null ? null : p.until, reason: p.reason || null, at: p.at, evasion: !!p.via };
+  const sc = p.type === "suspend" || p.type === "warn" ? scopeOf(p) : null;
+  if (sc) o.scope = sc;
+  if (Array.isArray(p.more) && p.more.length) o.more = p.more.map((x) => pubPun(x));   // the other active suspensions (other scopes)
+  return o;
+};
+// does this (public) punishment close the feature «need»? (no consent check — gate() does that)
+export function punBlocks(p, need = "online") {
+  if (!p) return null;
+  if (p.type === "ban" || p.type === "perm") return p;
+  for (const x of [p, ...(Array.isArray(p.more) ? p.more : [])]) if (x && x.type === "suspend" && scopeCovers(x.scope, need)) { const { more, ...one } = x; return one; }
+  return null;
+}
 
 // what an auth result allows. need: 'online' (raid, season, rankings, daily) | 'acc' (anything on the account)
 export function gate(a, need, env) {
   const p = a && a.pun;
   if (p && (p.type === "ban" || p.type === "perm")) return { err: "banned", pun: p };
-  if (need === "online" && p && p.type === "suspend") return { err: "suspended", pun: p };
+  const s = need !== "acc" ? punBlocks(p, need) : null;   // a suspension closes only its features (no scope = all online)
+  if (s) return { err: "suspended", pun: s, need, text: suspText(s) };
   if (consentOn(env) && a && a.consent_v !== termsV(env)) return { err: "consent", terms_v: termsV(env) };
   return null;
 }
@@ -162,7 +197,12 @@ export const GuardMixin = {
   punFor(accId) {
     const t = now();
     const rows = this.rows("SELECT * FROM pun WHERE acc = ? AND lifted IS NULL AND type IN ('suspend', 'ban', 'perm') AND (until IS NULL OR until > ?)", accId, t);
-    if (rows.length) return rows.sort((x, y) => RANK[y.type] - RANK[x.type] || (y.until == null) - (x.until == null) || (y.until || 0) - (x.until || 0))[0];
+    if (rows.length) {
+      rows.sort((x, y) => RANK[y.type] - RANK[x.type] || (y.until == null) - (x.until == null) || (y.until || 0) - (x.until || 0));
+      const top = rows[0], more = rows.slice(1).filter((x) => x.type === "suspend");
+      if (top.type === "suspend" && more.length) top.more = more;   // scoped suspensions: each one closes its own features
+      return top;
+    }
     const ev = this.one(`SELECT p.*, l2.acc AS src FROM links l1 JOIN links l2 ON l2.k = l1.k AND l2.acc != l1.acc JOIN pun p ON p.acc = l2.acc
       WHERE l1.acc = ? AND p.lifted IS NULL AND p.via IS NULL AND p.type IN ('suspend', 'ban', 'perm') AND (p.until IS NULL OR p.until > ?)
       AND NOT EXISTS (SELECT 1 FROM pun e WHERE e.acc = l1.acc AND e.type = 'exempt' AND e.via = l2.acc AND e.lifted IS NULL)
@@ -170,6 +210,7 @@ export const GuardMixin = {
     if (!ev) return null;
     const reason = "Обход блокировки другого аккаунта" + (ev.reason ? ": " + ev.reason : "");
     this.sql.exec("INSERT INTO pun (acc, type, reason, at, until, by, via) VALUES (?, ?, ?, ?, ?, 'auto', ?)", accId, ev.type, reason.slice(0, 200), t, ev.until, ev.src);
+    if (ev.scope) this.sql.exec("UPDATE pun SET scope = ? WHERE n = (SELECT MAX(n) FROM pun WHERE acc = ?)", ev.scope, accId);   // the same features
     console.log(`account ${accId}: inherits ${ev.type} of ${ev.src} (shared link)`);
     return this.one("SELECT * FROM pun WHERE acc = ? ORDER BY n DESC LIMIT 1", accId);
   },
@@ -364,7 +405,7 @@ export const GUARD_OPS = {
   },
 
   // ---- punishments (god panel via Online; bot /appeal)
-  pun_set({ to, type, until, reason, by }) {
+  pun_set({ to, type, until, reason, by, scope }) {
     const a = this.acc(to); if (!a) return { err: "not_found" };
     if (!PUN_TYPES.includes(type)) return { err: "bad_type" };
     const t = now();
@@ -375,6 +416,11 @@ export const GUARD_OPS = {
     }
     const why = typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 200) : null;
     this.sql.exec("INSERT INTO pun (acc, type, reason, at, until, by) VALUES (?, ?, ?, ?, ?, ?)", a.id, type, why, t, u, typeof by === "string" ? by.slice(0, 20) : null);
+    const sc = type === "suspend" || type === "warn" ? cleanScope(scope) : null;
+    if (sc) {
+      if (!this.punScopeCol) { try { this.sql.exec("ALTER TABLE pun ADD COLUMN scope TEXT"); } catch (e) { /* already there */ } this.punScopeCol = true; }
+      this.sql.exec("UPDATE pun SET scope = ? WHERE n = (SELECT MAX(n) FROM pun WHERE acc = ?)", sc.join(","), a.id);
+    }
     const p = this.one("SELECT * FROM pun WHERE acc = ? ORDER BY n DESC LIMIT 1", a.id);
     console.log(`account ${a.id}: punishment ${type}${u ? " until " + u : ""}`);
     return { ok: true, to: a.id, pun: pubPun(p), active: pubPun(this.punFor(a.id)) };
@@ -420,9 +466,10 @@ export const GUARD_OPS = {
       consent_at: a.consent_at || null, sessions: sessList(a).length, linked: GUARD_OPS.linked.call(this, { to: a.id }).rows };
   },
   // raid3 weekly fund (Online DO, internal): which of these accounts have an active punishment (suspend / ban / perm) now
-  pun_many({ ids }) {
-    const out = {};
-    for (const id of (Array.isArray(ids) ? ids : []).slice(0, 5000)) if (typeof id === "string" && /^[0-9a-f]{12}$/.test(id)) out[id] = !!this.punFor(id);
+  // 07.11 need: the feature asking (season / raid / …; default "online": a ban or a suspension of all online)
+  pun_many({ ids, need }) {
+    const out = {}, nd = typeof need === "string" && (need === "online" || PUN_SCOPES.includes(need)) ? need : "online";
+    for (const id of (Array.isArray(ids) ? ids : []).slice(0, 5000)) if (typeof id === "string" && /^[0-9a-f]{12}$/.test(id)) out[id] = !!punBlocks(pubPun(this.punFor(id)), nd);
     return { ok: true, pun: out };
   },
 };

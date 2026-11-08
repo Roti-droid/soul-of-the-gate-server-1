@@ -16,7 +16,11 @@ const GAME = "Кристальный забег";
 
 // limit: "once" — one purchase per Telegram user (bot) and one activation per game account (reward.once, checked at redeem);
 //        "month" — one purchase per Telegram user per 30 days.
-// reward: gems (💎), dark (тёмные кристаллы), skins / frames / trails (ids that exist in the game), pass (премиум-пропуск на аккаунт).
+// reward: gems (💎), dark (тёмные кристаллы), skins / frames / trails / deaths (ids that exist in the game), pass (премиум-пропуск на аккаунт),
+//         bundle (2.3.14: the game equips the set; duplicates are paid back in 💎 by the game from its own prices).
+// until: 2.3.14 a limited offer — no menu button / invoice / pre_checkout after this moment (unix s; env STARTER_LTD_UNTIL = ISO date overrides).
+// 2.3.14 bundles (b_*, starter_ltd) — keep identical to the game's src/cosm4.js BUNDLES (test/test_bundles.mjs). Every part is also sold
+// for crystals in the game; «отдельно» = the crystal prices / 60 (the «Мешок кристаллов» rate 6000 💎 / 100 ⭐).
 export const PRODUCTS = [
   { id: "starter", title: "Стартовый набор", description: "2500 💎 + 100 тёмных кристаллов + золотая рамка. Один раз на аккаунт",
     stars: 15, reward: { gems: 2500, dark: 100, frames: ["gold"], once: "starter" }, limit: "once" },
@@ -41,14 +45,41 @@ export const PRODUCTS = [
     stars: 120, reward: { gems: 0, dark: 2500, skins: ["d_eclipse"] } },
   { id: "monthly", title: "Набор месяца", description: "8000 💎 + 600 тёмных кристаллов. Можно купить раз в 30 дней",
     stars: 99, reward: { gems: 8000, dark: 600 }, limit: "month" },
+  { id: "starter_ltd", title: "Стартовый набор «Искра»", description: "1500 💎 + скин «Искорка», шлейф «Конфетти», взрыв «Хлопушка», рамка «Искра». " +
+    "Отдельно ≈68⭐ (−57%). Один раз на аккаунт, только до 15.12.2026",
+    stars: 29, reward: { gems: 1500, skins: ["spark_s"], trails: ["t_confetti"], deaths: ["confetti"], frames: ["f_spark"], bundle: "starter_ltd", once: "starter_ltd" },
+    limit: "once", until: Date.UTC(2026, 11, 15, 21, 0, 0) / 1000 },
+  { id: "b_sakura", title: "Набор «Сакура»", description: "Скин «Сакура» + шлейф «Лепестки сакуры» + взрыв «Лепестковый вихрь» + рамка «Сакура». Отдельно ≈95⭐ (−38%)",
+    stars: 59, reward: { gems: 0, skins: ["sakura_s"], trails: ["t_petals"], deaths: ["petals"], frames: ["f_sakura"], bundle: "b_sakura" } },
+  { id: "b_storm", title: "Набор «Гроза»", description: "Скин «Грозовое ядро» + шлейф «Молнии» + взрыв «Шаровая молния» + рамка «Гроза». Отдельно ≈110⭐ (−37%)",
+    stars: 69, reward: { gems: 0, skins: ["storm_s"], trails: ["t_lightning"], deaths: ["storm"], frames: ["f_storm"], bundle: "b_storm" } },
+  { id: "b_pixel", title: "Набор «Пиксель»", description: "Скин «Пиксель» + шлейф «8 бит» + взрыв «Пиксельный распад» + рамка «Пиксель». Отдельно ≈87⭐ (−37%)",
+    stars: 55, reward: { gems: 0, skins: ["pixel_s"], trails: ["t_pixels"], deaths: ["pixdis"], frames: ["f_pixel"], bundle: "b_pixel" } },
+  { id: "b_cosmos", title: "Набор «Космос»", description: "Скин «Карманная вселенная» + шлейф «Туманность» + взрыв «Чёрная дыра» + рамка «Космос». Отдельно ≈127⭐ (−38%)",
+    stars: 79, reward: { gems: 0, skins: ["cosmos_s"], trails: ["t_nebula"], deaths: ["blackhole"], frames: ["f_cosmos"], bundle: "b_cosmos" } },
+  { id: "b_rime", title: "Набор «Иней»", description: "Скин «Ледяное сердце» + шлейф «Снежинки» + взрыв «Ледяной раскол» + рамка «Иней». Отдельно ≈102⭐ (−36%)",
+    stars: 65, reward: { gems: 0, skins: ["frost_s"], trails: ["t_snow"], deaths: ["freeze"], frames: ["f_rime"], bundle: "b_rime" } },
+  { id: "b_runes", title: "Набор «Руны Врат»", description: "Скин «Рунный камень» + шлейф «Руны» + взрыв «Рунная печать» + рамка «Руны». Отдельно ≈113⭐ (−36%)",
+    stars: 72, reward: { gems: 0, skins: ["rune_s"], trails: ["t_runes"], deaths: ["runeseal"], frames: ["f_runes"], bundle: "b_runes" } },
 ];
+// 2.3.14 a limited product is on sale only before its `until` (unix s)
+export function productUntil(p, env) {
+  if (!p || !p.until) return null;
+  const ov = env && p.id === "starter_ltd" && env.STARTER_LTD_UNTIL ? Date.parse(env.STARTER_LTD_UNTIL) / 1000 : NaN;
+  return Number.isFinite(ov) ? ov : p.until;
+}
+export function productOpen(p, env, t = Math.floor(Date.now() / 1000)) {
+  const u = productUntil(p, env);
+  return u == null || t < u;
+}
 export const SUPPORT = {
   title: "Поддержка автора",
   description: "Спасибо, что поддерживаете «Кристальный забег»! Без игровой награды.",
   amounts: [1, 10, 50, 100, 500],
 };
 const SKIN_NAMES = { royal: "Королевский", founder: "Основатель", ufo: "НЛО", dragonegg: "Драконье яйцо", star_wanderer: "Звёздный странник",
-  d_eclipse: "Затмение" };
+  d_eclipse: "Затмение", spark_s: "Искорка", sakura_s: "Сакура", storm_s: "Грозовое ядро", pixel_s: "Пиксель", cosmos_s: "Карманная вселенная",
+  frost_s: "Ледяное сердце", rune_s: "Рунный камень" };
 const MONTH = 30 * 86400;
 const BY_ID = Object.fromEntries(PRODUCTS.map((p) => [p.id, p]));
 
@@ -83,7 +114,8 @@ export function normalizeReward(r) {
   if (out.dark !== undefined && (!Number.isInteger(out.dark) || out.dark < 0)) throw new Error("dark должно быть целым >= 0");
   if (out.dark === 0) delete out.dark;
   if (out.once !== undefined && !(typeof out.once === "string" && /^[a-z0-9_]{1,32}$/.test(out.once))) delete out.once;
-  for (const k of ["frames", "trails"]) {
+  if (out.bundle !== undefined && !(typeof out.bundle === "string" && /^[a-z0-9_]{1,32}$/.test(out.bundle))) delete out.bundle;
+  for (const k of ["frames", "trails", "deaths"]) {
     if (out[k] !== undefined && !(Array.isArray(out[k]) && out[k].every((x) => typeof x === "string" && /^[a-z0-9_]{1,32}$/.test(x)))) delete out[k];
   }
   return out;
@@ -124,8 +156,9 @@ export function fmtReward(reward) {
   if (r.gems) parts.push(`${r.gems} 💎`);
   if (r.dark) parts.push(`${r.dark} тёмных кристаллов`);
   for (const s of r.skins) parts.push(`скин «${SKIN_NAMES[s] || s}»`);
-  if (r.frames && r.frames.length) parts.push("рамка");
   if (r.trails && r.trails.length) parts.push("шлейф");
+  if (r.deaths && r.deaths.length) parts.push("взрыв");
+  if (r.frames && r.frames.length) parts.push("рамка");
   if (r.pass) parts.push("Премиум-пропуск");
   return parts.join(" + ") || "без награды";
 }
@@ -352,7 +385,7 @@ export class Donate {
   }
 
   menuRows(rows) {
-    rows.push(...PRODUCTS.map((p) => [{ text: `${p.title} — ${fmtReward(p.reward)} · ${p.stars}⭐`, callback_data: `buy:${p.id}` }]));
+    rows.push(...PRODUCTS.filter((p) => productOpen(p, this.env)).map((p) => [{ text: `${p.title} — ${fmtReward(p.reward)} · ${p.stars}⭐`, callback_data: `buy:${p.id}` }]));
     rows.push([{ text: `💜 ${SUPPORT.title}`, callback_data: "support" }]);
     rows.push([{ text: "🎟 Мои коды", callback_data: "mycodes" }]);
     return { inline_keyboard: rows };
@@ -398,6 +431,7 @@ export class Donate {
   }
 
   async invoice(chatId, p, userId = chatId) {
+    if (!productOpen(p, this.env)) return this.say(chatId, `«${esc(p.title)}» больше не продаётся — акция закончилась.\nДругие наборы: /start`);
     const lim = this.limitProblem(userId, p);
     if (lim) return this.say(chatId, `${esc(lim)}\nДругие наборы: /start`);
     return this.tg("sendInvoice", {
@@ -448,6 +482,9 @@ export class Donate {
     if (item && item.expired) {
       return this.tg("answerPreCheckoutQuery", { pre_checkout_query_id: q.id, ok: false,
         error_message: "Акция закончилась. Текущие наборы и акции: /start" });
+    }
+    if (item && item.p && !productOpen(item.p, this.env)) {
+      return this.tg("answerPreCheckoutQuery", { pre_checkout_query_id: q.id, ok: false, error_message: "Акция закончилась. Текущие наборы: /start" });
     }
     const lim = item && item.p ? this.limitProblem(q.from && q.from.id, item.p) : null;
     if (lim) return this.tg("answerPreCheckoutQuery", { pre_checkout_query_id: q.id, ok: false, error_message: lim });

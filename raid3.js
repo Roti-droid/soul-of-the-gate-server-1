@@ -281,8 +281,8 @@ export class RaidHub {
     // per account, then per device (no device id = old session / 2.3.9 client: the account limit alone)
     if (!this.limit("acc:" + id, FIND_ACC_PER_MIN, 60)) return [{ err: "rate" }, 429];
     if (me.dk && !this.limit("dev:" + me.dk, FIND_DEV_PER_MIN, 60)) return [{ err: "rate" }, 429];
-    const g = gate(a, "online", this.env);
-    if (g) return [{ err: g.err, pun: g.pun || null, terms_v: g.terms_v }, 403];
+    const g = gate(a, "raid", this.env);   // 07.11: a suspension scoped to other features keeps the raid open
+    if (g) return [{ err: g.err, pun: g.pun || null, terms_v: g.terms_v, need: g.need, text: g.text }, 403];
     const chk = await onlineCall(this.env, { op: "check", acc: id }).catch(() => null);   // the ban is checked again with the result
     if (chk && chk.banned) return [{ err: "banned" }, 403];
     const rt = nowS(), t = testAt(this.env, body.at) || rt, c = calendar(t);
@@ -471,7 +471,7 @@ export class Match {
       const a = await authAcc(this.env, id, secret);
       if (a.busy) return this.refuse(ws, "busy");
       if (!a.ok) return this.refuse(ws, "auth");
-      const g = gate(a, "online", this.env);
+      const g = gate(a, "raid", this.env);   // 07.11: a suspension scoped to other features keeps the raid open
       if (g) return this.refuse(ws, g.err);
       if (this.phase === "end") return this.afterEnd(ws, id);
       let v; try { v = await hubCall(this.env, "verify", { acc: id, match: this.name, ticket }); } catch (e) { v = { err: "busy" }; }

@@ -28,14 +28,14 @@ export const RARITIES = ["common", "rare", "epic", "legendary"];
 export const WEIGHTS = { common: 50, rare: 32, epic: 14, legendary: 4 };
 export const CHEST = {
   normal: { price: 800, cur: "coins", pityN: 10, pool: {
-    common: ["fire", "toxic", "gold", "neon", "candy", "soccer"],
-    rare: ["earth", "disco", "galaxy", "donut", "lava", "pumpkin"],
-    epic: ["aurora", "hexdrone", "d20", "miniplanet", "plasma", "gyro", "cybereye"],
-    legendary: ["void", "comet_s", "ufo", "dragonegg"] } },
+    common: ["fire", "toxic", "gold", "neon", "candy", "soccer", "mint", "coral", "citrus", "sapphire"],
+    rare: ["earth", "disco", "galaxy", "donut", "lava", "pumpkin", "amber", "cybergrid", "malachite", "jelly"],
+    epic: ["aurora", "hexdrone", "d20", "miniplanet", "plasma", "gyro", "cybereye", "pulsar", "kaleido", "magma"],
+    legendary: ["void", "comet_s", "ufo", "dragonegg", "supernova", "orion"] } },
   dark: { price: 350, cur: "dark", pityN: 5, pool: {
     common: ["d_obsidian"],
-    rare: ["d_eclipse", "d_voideye"],
-    epic: ["d_chains"],
+    rare: ["d_eclipse", "d_voideye", "d_amethyst"],
+    epic: ["d_chains", "d_bloodmoon"],
     legendary: ["d_shadowflame"] } },
 };
 const EPIC_UP = { epic: 1, legendary: 1 };

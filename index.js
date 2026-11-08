@@ -292,7 +292,8 @@ export class Lobby {
   }
 
   setAccount(c, res) {
-    const f = { acc: res.id, nick: res.nick || null, blk: blkText(gate(res, "online", this.env)) };
+    const gn = gate(res, "nick", this.env);   // 07.11: a suspension scoped to «смена ника» (other punishments leave the nick alone, as before)
+    const f = { acc: res.id, nick: res.nick || null, blk: blkText(gate(res, "online", this.env)), nb: gn && gn.pun && Array.isArray(gn.pun.scope) && gn.pun.scope.includes("nick") ? gn.text : null };
     if (res.nick) f.name = res.nick;
     this.patch(c, f);
     console.log(`account ${res.id} on ${c.id}${res.nick ? " (" + res.nick + ")" : ""}`);
@@ -771,6 +772,7 @@ const HANDLERS = {
 
   async nick_set(c, msg) {
     if (!this.needAcc(c, "nick_set")) return;
+    if (c.nb) return this.errRe(c, c.nb, "nick_set");
     const res = await this.acc(c, "nick", { acc: c.acc, nick: msg.nick }, "nick_set");
     if (!res) return;
     this.patch(c, { nick: res.nick, name: res.nick });

@@ -11,6 +11,7 @@
 //   POST /api/v2/raid/claim            {id,secret,week}  reward after the boss of that week fell
 //   GET  /api/v2/season                season id, ends, tiers;  POST /api/v2/season/claim {id,secret,tier}
 //   POST /api/v2/season/claim          {id,secret,tier,track:"prem"} premium track (pass on the account, checked in Accounts)
+//   GET  /api/v2/season/top?me=        season leaderboard: top 50 by season km (rank, nick, km) + my place; cached ~30 s
 //   POST /api/v2/pass/legacy           {id,secret} old local SAVE.pass -> account pass (see accounts.js pass_legacy)
 //   GET  /api/v2/promo                 the current discount (promo.js) for the game's popup
 //   POST /api/v2/inbox                 {id,secret} -> pending grants;  POST /api/v2/inbox/ack {id,secret,upto}
@@ -29,7 +30,10 @@ import { ACC_ROUTES, GUARD_GOD, REWARDS_SCHEMA, journal, guardInternal, GODTOK_S
 import { gate, devHash, cleanLabel, isOwnerId, ownerConfigured } from "./accounts_guard.js";
 import { calendar as raid3Calendar, ENEMIES as RAID3_ENEMIES } from "./raid3_rules.js";
 import { CREATOR_GOD } from "./creator.js";   // «Создать»: hide a level / ban an author from publishing (god panel)
+import { SEASON_TABLE_V, SEASON_TIERS_V1, PREMIUM_TIERS_V1, buildFree, buildPremium, cvRead, listRead, tierState, claimView } from "./season_v2.js";   // 2.3.14 versioned season tables
 import { modesInternal } from "./modes_online.js";   // 2.3.12 «Режимы»: ban check / flags / rewards for modes.js
+import { whoList, whoNote } from "./online_who.js";
+import { NOTICE_ROUTES, noticesFor } from "./online_notice.js";   // punishment notices: POST /ping → notices, POST /notice/ack   // «Кто онлайн»: GET /online/list + god «who» (ids)
 
 const DAY = 86400;
 const WEEK = 7 * DAY;
@@ -81,26 +85,16 @@ export function dailyInfo(day = dayKey()) {
 
 // ------------------------------------------------------------------ season (bigger + harder, owner's request)
 // 30 tiers (was 12). Step grows: tier i costs 2500 + 150*i metres -> ~140 km for the whole 14-day season.
-export const SEASON_TIERS = (() => {
-  const skins = { 5: "lava", 10: "season_frost", 15: "season_neon", 20: "season_aurora", 25: "season_void", 30: "season_crown" };
-  const out = []; let need = 0;
-  for (let i = 1; i <= 30; i++) {
-    need += 2500 + 150 * i;
-    const r = skins[i] ? { skin: skins[i], gems: 500 * Math.ceil(i / 5) } : { gems: 150 + 60 * i };
-    if (i % 10 === 0) r.title = "season_t" + i;
-    out.push({ tier: i, xp: need, reward: r });
-  }
-  return out;
-})();
-// premium track (Премиум-пропуск, 75⭐): a reward on EVERY tier, only crystals / dark crystals / a title — nothing that
+// 2.3.14 «Премиум-сезон»: the tables are VERSIONED (season_v2.js): v2 free track = crystals + small looks; the big looks
+// (lava, the season skins, «Золотое сияние», «Огненная бездна», «Корона сезона») moved to the premium track. Claims made under
+// v1 keep what they gave; a v1 claim where v2 gives more can be topped up once (POST /season/claim, same call).
+export const SEASON_TIERS = buildFree();
+// premium track (Премиум-пропуск, 75⭐): a reward on EVERY tier: crystals / dark crystals / titles / looks — nothing that
 // counts in the rankings or the raid. The pass itself (skin, frame, trail, +15 % crystals per run) is applied by the game.
-export const PREMIUM_TIERS = SEASON_TIERS.map(({ tier, xp }) => {
-  const r = { gems: 100 + 50 * tier };
-  if (tier % 3 === 0) r.dark = 30 + 5 * tier;
-  if (tier % 5 === 0) r.gems += 400 * (tier / 5);
-  if (tier === 30) r.title = "season_p30";
-  return { tier, xp, reward: r };
-});
+// 2.3.14: looks on tiers 8 / 16 / 22 / 27 (trail «Золотая пыль», death «Феникс», frame «Золото Врат», skin «Золотой страж» — game src/cosm4.js)
+export const PREMIUM_COSMETICS = { 8: { trail: "t_goldust" }, 16: { death: "phoenix" }, 22: { frame: "f_aurum" }, 27: { skin: "p_aurum" } };
+//   + season_v2.js PREMIUM_BIG on 5 / 10 / 15 / 20 / 25 / 30 (the big season skins, titles «Избранный Врат» / «Премиум-легенда»)
+export const PREMIUM_TIERS = buildPremium(PREMIUM_COSMETICS);
 export function seasonTierOf(xp) { let t = 0; for (const s of SEASON_TIERS) if (xp >= s.xp) t = s.tier; return t; }
 export function levelOf(xp) { return Math.floor(Math.sqrt(Math.max(0, xp) / 50)) + 1; }
 
@@ -226,6 +220,7 @@ export class Online {
     this.ctx = ctx; this.env = env; this.sql = ctx.storage.sql;
     for (const q of SCHEMA) this.sql.exec(q);
     try { this.sql.exec("ALTER TABLE profiles ADD COLUMN pclaimed TEXT"); } catch (e) { /* already there */ }   // premium track tiers taken
+    try { this.sql.exec("ALTER TABLE profiles ADD COLUMN cv TEXT"); } catch (e) { /* already there */ }   // 2.3.14 tiers claimed under the v2 tables (season_v2.js)
     this.authCache = new Map();   // id:sha(secret) -> {until, nick}
     this.hits = new Map();        // rate-limit buckets: key -> [times]
     this.cd = new Map();          // cooldowns: "op:acc" -> last time
@@ -291,8 +286,8 @@ export class Online {
     if (typeof id !== "string" || !ACC_RE.test(id) || typeof secret !== "string" || secret.length > 64) return null;
     const key = id + ":" + await sha(secret);
     const c = this.authCache.get(key);
-    let nick, g;
-    if (c && c.until > Date.now()) { nick = c.nick; g = c.g; }
+    let nick, g, a;
+    if (c && c.until > Date.now()) { nick = c.nick; g = c.g; a = c.a; }
     else {
       // 2.3.9: only real checks in the Accounts DO count (60 / min per IP); a cached sign-in (this id + this secret already
       // verified) is not limited — before, a busy minute (or many players behind one mobile IP) turned into «not signed in»
@@ -301,11 +296,12 @@ export class Online {
       if (!r || !r.ok) return null;
       nick = r.nick || null;
       g = gate(r, "online", this.env);   // 2.3.6: punishment / consent (cached 1 min: a ban or «выйти везде» acts fast)
-      this.authCache.set(key, { until: Date.now() + (g ? 10 : 60) * 1000, nick, g });
+      a = { pun: r.pun || null, consent_v: r.consent_v };   // 07.11: kept for the scoped checks (season claim / raid claim)
+      this.authCache.set(key, { until: Date.now() + (g || a.pun ? 10 : 60) * 1000, nick, g, a });
       if (this.authCache.size > 20000) this.authCache.clear();
     }
     const p = this.profile(id, nick);
-    p._g = g || null;
+    p._g = g || null; p._a = a || null;
     return p;
   }
   profile(id, nick) {
@@ -323,10 +319,11 @@ export class Online {
     }
     return p;
   }
-  async me(body, ip) {
+  async me(body, ip, need) {   // need: a scoped feature ("season", "raid"); default = any online
     const p = await this.who(body, ip);
     if (!p) return [null, { err: "auth", status: 401 }];
-    if (p._g) return [null, { err: p._g.err, pun: p._g.pun || null, terms_v: p._g.terms_v, status: 403 }];
+    const g = need && p._a ? gate(p._a, need, this.env) || p._g : p._g;
+    if (g) return [null, { err: g.err, pun: g.pun || null, terms_v: g.terms_v, need: g.need, text: g.text, status: 403 }];
     if (p.banned) return [null, { err: "banned", reason: p.ban_reason || null, status: 403 }];
     return [p, null];
   }
@@ -506,7 +503,7 @@ const ROUTES = {
 
   async "POST /raid/claim"({ body, ip }) {
     if (body.ch) return { err: "cheat_session" };   // 2.3.12: cheats were used on the phone this session — no rewards, no leaderboard
-    const [p, e] = await this.me(body, ip); if (e) return e;
+    const [p, e] = await this.me(body, ip, "raid"); if (e) return e;
     if (!this.cooldown("rclaim", p.id)) return { err: "rate", status: 429 };
     const week = Number.isInteger(body.week) ? body.week : weekOf();
     if (week > weekOf() || week < weekOf() - 4) return { err: "bad_week" };
@@ -528,9 +525,13 @@ const ROUTES = {
     return { ok: true, season: s.season, ends: s.ends, tiers: SEASON_TIERS, ptiers: PREMIUM_TIERS };
   },
 
+  // 2.3.13 «Рейтинг сезона»: top 50 by season km of the CURRENT season + my place (?me=<id>). Public data only: rank, nick, km
+  // (no account ids). Banned profiles and accounts with an active punishment (Accounts DO: suspend / ban / perm) are left out.
+  async "GET /season/top"({ q }) { return seasonTop.call(this, q.get("me")); },
+
   async "POST /season/claim"({ body, ip }) {
     if (body.ch) return { err: "cheat_session" };   // 2.3.12: cheats were used on the phone this session — no rewards, no leaderboard
-    const [p, e] = await this.me(body, ip); if (e) return e;
+    const [p, e] = await this.me(body, ip, "season"); if (e) return e;
     if (!this.cooldown("claim", p.id)) return { err: "rate", status: 429 };
     if (body.track === "prem") {
       const pt = PREMIUM_TIERS.find((s) => s.tier === body.tier);
@@ -597,12 +598,16 @@ const ROUTES = {
     const p = await this.who(body, ip);
     if (!p) return { err: "auth", status: 401 };
     if (this.cooldown("ping", p.id)) this.sql.exec("UPDATE profiles SET last_seen = ? WHERE id = ?", now(), p.id);
-    return { ok: true, online: this.one("SELECT COUNT(*) AS n FROM profiles WHERE last_seen > ?", now() - ONLINE_WINDOW).n };
+    whoNote(this, p, body.act);   // «Кто онлайн»: menu / run / raid / push / ghost (profiles.act)
+    const notices = noticesFor(this, p.id);   // a punishment issued in the god panel: shown at once, confirmed with /notice/ack
+    return { ok: true, online: this.one("SELECT COUNT(*) AS n FROM profiles WHERE last_seen > ?", now() - ONLINE_WINDOW).n, ...(notices ? { notices } : {}) };
   },
 
   "GET /online"() {
     return { ok: true, count: this.one("SELECT COUNT(*) AS n FROM profiles WHERE last_seen > ?", now() - ONLINE_WINDOW).n };
   },
+  // «Кто онлайн»: nick + skin + act only (ids: the god action «who»)
+  "GET /online/list"() { return whoList(this, punMany, ONLINE_WINDOW, false); },
 
   // 2.3.9: rights = owner account (id + secret, checked in Accounts) AND (GOD_KEY or this device's god token «gt»).
   // The reason of a refusal (why) is told only to the owner's signed-in account or to a request with the right key;
@@ -648,7 +653,7 @@ const ROUTES = {
   },
 };
 
-Object.assign(ROUTES, ACC_ROUTES);
+Object.assign(ROUTES, ACC_ROUTES, NOTICE_ROUTES);
 
 const GOD = {
   ...GUARD_GOD,
@@ -681,6 +686,7 @@ const GOD = {
     const r = await GUARD_GOD.lift.call(this, { to: b.to });
     return r && r.ok ? { ok: true, to: b.to, banned: false, lifted: r.lifted } : r;
   },
+  who() { return whoList(this, punMany, ONLINE_WINDOW, true); },   // «Кто онлайн» with the account ids (owner)
   online() {
     const rows = this.rows("SELECT id, nick, last_seen, flags, banned FROM profiles WHERE last_seen > ? ORDER BY last_seen DESC LIMIT 200", now() - ONLINE_WINDOW);
     return { ok: true, count: rows.length, rows };
@@ -753,6 +759,66 @@ const GOD = {
   },
 };
 
+// ------------------------------------------------------------------ 2.3.13 season leaderboard (GET /season/top)
+// Built from the profiles of the current season (season km = season_xp metres), banned profiles left out in SQL, punished
+// accounts left out after one pun_many call to the Accounts DO per page of candidates. Kept in memory for SEASON_TOP_TTL s
+// (default 30; a test knob 1–300). Accounts unreachable: the last list of this season, or 503 — never an unchecked list.
+const STOP_N = TOP_N, STOP_PAGE = 200, STOP_PAGES = 5;
+function stopTtl(env) { const v = Number(env && env.SEASON_TOP_TTL); return v >= 1 && v <= 300 ? v : 30; }
+const kmOf = (m) => Math.round(m / 100) / 10;
+async function punMany(self, ids, need) {   // need: "season" / "raid" / … (07.11 scoped suspensions); default any online
+  if (!ids.length) return {};
+  const r = await accCall(self.env, "pun_many", { ids, need });
+  if (!r || !r.ok || !r.pun) throw new Error("pun_many");
+  return r.pun;
+}
+async function seasonTopBuild() {
+  const s = this.season(), rows = [], pun = new Map(), punXp = [];
+  for (let page = 0; page < STOP_PAGES && rows.length < STOP_N; page++) {
+    const cand = this.rows("SELECT id, nick, season_xp FROM profiles WHERE season = ? AND season_xp > 0 AND banned = 0 " +
+      "ORDER BY season_xp DESC, id LIMIT ? OFFSET ?", s.season, STOP_PAGE, page * STOP_PAGE);
+    if (!cand.length) break;
+    const pm = await punMany(this, cand.map((c) => c.id), "season");
+    for (const c of cand) {
+      const bad = !!pm[c.id]; pun.set(c.id, bad);
+      if (bad) punXp.push(c.season_xp); else if (rows.length < STOP_N) rows.push(c);
+    }
+    if (cand.length < STOP_PAGE) break;
+  }
+  return { season: s.season, ends: s.ends, at: Date.now(), rows, pun, punXp };
+}
+async function seasonTop(meArg) {
+  const cur = this.season();
+  let c = this.stopCache;
+  if (!c || c.season !== cur.season || Date.now() - c.at > stopTtl(this.env) * 1000) {
+    if (!this.stopBuild) this.stopBuild = seasonTopBuild.call(this).finally(() => { this.stopBuild = null; });
+    try { c = this.stopCache = await this.stopBuild; }
+    catch (e) { if (!c || c.season !== cur.season) return { err: "server", status: 503 }; }
+  }
+  const me = typeof meArg === "string" && ACC_RE.test(meArg) ? meArg : null;
+  let mine = null;
+  const rows = c.rows.map((r, i) => {
+    const o = { rank: i + 1, nick: r.nick || null, km: kmOf(r.season_xp) };
+    if (me && r.id === me) { o.me = true; mine = { rank: i + 1, km: o.km }; }
+    return o;
+  });
+  if (me && !mine) {   // below the top 50 (or not in the cached list yet): live count of the non-banned, non-punished above me
+    const p = this.one("SELECT season, season_xp, banned FROM profiles WHERE id = ?", me);
+    if (p && p.season === c.season && p.season_xp > 0 && !p.banned) {
+      let bad = c.pun.get(me);
+      if (bad === undefined) {
+        try { bad = !!(await punMany(this, [me], "season"))[me]; } catch (e) { bad = null; }
+        if (bad !== null && c.pun.size < 20000) c.pun.set(me, bad);
+      }
+      if (bad === false) {
+        const above = this.one("SELECT COUNT(*) AS n FROM profiles WHERE season = ? AND banned = 0 AND season_xp > ?", c.season, p.season_xp).n;
+        mine = { rank: Math.max(1, above - c.punXp.filter((x) => x > p.season_xp).length + 1), km: kmOf(p.season_xp) };
+      }
+    }
+  }
+  return { ok: true, season: c.season, ends: c.ends, now: now(), rows, me: mine };
+}
+
 // ------------------------------------------------------------------ raid3.js internal (weekly online raid)
 const RAID3_CAP = { minion: 5, boss: 3 };      // rewarded wins per account per UTC day (= RULES.dailyCap in raid3_rules.js)
 // test-only knob (RAID3_TEST=1): a fixed small pool so the tests can kill it
@@ -765,7 +831,7 @@ async function raid3Week(b) {
     const list = fundPlan(this, w);
     let pun = {};
     if (list.length) {
-      try { const r = await accCall(this.env, "pun_many", { ids: list.map((x) => x.acc) }); if (!r || !r.ok) throw new Error("pun_many"); pun = r.pun; }
+      try { const r = await accCall(this.env, "pun_many", { ids: list.map((x) => x.acc), need: "raid" }); if (!r || !r.ok) throw new Error("pun_many"); pun = r.pun; }
       catch (e) { console.log("raid3 fund: punishment check failed, retry later", e && e.message); break; }   // no blind payout
     }
     fundPay(this, w, list, pun);

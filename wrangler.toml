@@ -101,7 +101,7 @@ new_sqlite_classes = ["Site"]
 
 [vars]
 # website: the version shown for the built-in /CrystalRun.apk (Chapter 1 · Android) until an own file is uploaded
-SITE_APK_VERSION = "2.3.13"
+SITE_APK_VERSION = "2.3.14"
 # 2.3.12 the owner's account (an id is not a secret): owner rights = OWNER_ID (secret) or this
 OWNER_ID_ALT = "f1dca78b519d"
 # 2.3.12 (owner 07.11): the god panel works for the signed-in owner account without GOD_KEY

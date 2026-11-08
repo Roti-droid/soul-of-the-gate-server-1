@@ -4,7 +4,7 @@
 //   GET  /api/v2/creator/list?sort=new|top|plays|featured|battle&q=&page=&week=   -> {ok, rows, page, more}
 //   GET  /api/v2/creator/level?id=                    -> {ok, level:{…meta, data}}
 //   GET  /api/v2/creator/battle?week=                 -> {ok, week, theme, ends, rows, winners, prev}
-//   POST /api/v2/creator/me       {id,secret}         -> {ok, sparks, total, owned, badge, today, mine, banned}
+//   POST /api/v2/creator/me       {id,secret}         -> {ok, sparks, total, owned, badge, today, mine[…meta, earned, prize], author{levels,plays,completes,likes,earned}, banned}
 //   POST /api/v2/creator/publish  {id,secret,level,battle?}  -> {ok, lid}     (account only, rate / size limited, validated here)
 //   POST /api/v2/creator/start    {id,secret,lid}     -> {ok, tk, plays}       a ticket: the completion must come through it
 //   POST /api/v2/creator/finish   {id,secret,tk,t,rec,cry,mod?}  -> {ok, first, sparks, author, balance, why?}
@@ -119,16 +119,17 @@ export class Creator {
     if (!h || t - h[1] > sec * 1000) { this.hits.set(k, [1, t]); if (this.hits.size > 20000) this.hits.clear(); return true; }
     return ++h[0] <= n;
   }
-  async who(b, ip) {
+  async who(b, ip, need = "online") {
     if (!b || typeof b.id !== "string" || !ACC_RE.test(b.id) || typeof b.secret !== "string" || !b.secret || b.secret.length > 64) return { err: "auth", status: 401 };
     const key = b.id + ":" + await sha(b.secret), c = this.authOk.get(key);
-    if (c && c.until > Date.now()) return c.g ? { err: c.g.err, pun: c.g.pun || null, status: 403 } : { acc: b.id, nick: c.nick };
+    const out = (g, nick) => (g ? { err: g.err, pun: g.pun || null, need: g.need, text: g.text, status: 403 } : { acc: b.id, nick });
+    if (c && c.until > Date.now()) return out(gate(c.a, need, this.env), c.nick);
     if (!this.limit("auth:" + ip, AUTH_PER_MIN_IP, 60)) return { err: "rate", status: 429 };
     let r; try { r = await accCall(this.env, "auth", { id: b.id, secret: b.secret }); } catch (e) { r = null; }
     if (!r || !r.ok) return { err: "auth", status: 401 };
-    const g = gate(r, "online", this.env);
-    this.authOk.set(key, { until: Date.now() + (g ? 10 : 60) * 1000, nick: r.nick || null, g }); if (this.authOk.size > 20000) this.authOk.clear();
-    return g ? { err: g.err, pun: g.pun || null, status: 403 } : { acc: b.id, nick: r.nick || null };
+    const a = { pun: r.pun || null, consent_v: r.consent_v }, g = gate(a, need, this.env);   // the raw punishment is cached: each op asks its own scope
+    this.authOk.set(key, { until: Date.now() + (a.pun || g ? 10 : 60) * 1000, nick: r.nick || null, a }); if (this.authOk.size > 20000) this.authOk.clear();
+    return out(g, r.nick || null);
   }
   wallet(acc) {
     let w = this.one("SELECT * FROM wallet WHERE acc = ?", acc);
@@ -190,8 +191,8 @@ export class Creator {
       if (!this.limit("w:" + ip, WRITE_PER_MIN_IP, 60)) return json({ err: "rate" }, 429);
       let b; try { b = JSON.parse(await request.text() || "{}"); } catch (e) { return json({ err: "bad_json" }, 400); }
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ err: "bad_json" }, 400);
-      const u = await this.who(b, ip);
-      if (u.err) return json({ err: u.err, pun: u.pun || undefined }, u.status || 400);
+      const u = await this.who(b, ip, op === "me" || op === "start" ? "online" : "creator");   // 07.11: «Создать» scope (publish / like / finish → sparks / shop)
+      if (u.err) return json({ err: u.err, pun: u.pun || undefined, need: u.need, text: u.text }, u.status || 400);
       const out = await fn.call(this, b, u, ip);
       return json(out, out && out.err ? (out.status || 400) : 200);
     } catch (e) {
@@ -241,11 +242,19 @@ export class Creator {
   me(b, u) {
     const w = this.wallet(u.acc);
     const owned = this.rows("SELECT item FROM owned WHERE acc = ?", u.acc).map((r) => r.item);
-    const mine = this.rows("SELECT * FROM levels WHERE author = ? ORDER BY created DESC LIMIT 30", u.acc).map((r) => ({ ...this.meta(r), hide_reason: r.hide_reason || undefined }));
+    // 2.3.14 author profile: ✦ each level earned its author = the author share of every first completion (completes.author_sparks)
+    // + a battle prize (levels.featured = week * 10 + place). Read-only sums of what the server already paid.
+    const earnedOf = new Map(this.rows("SELECT c.lid AS lid, SUM(c.author_sparks) AS s FROM completes c JOIN levels l ON l.id = c.lid WHERE l.author = ? GROUP BY c.lid", u.acc).map((r) => [r.lid, r.s || 0]));
+    const prizeOf = (r) => { const pl = r.featured ? r.featured % 10 : 0; return pl >= 1 && pl <= C.BATTLE_PRIZE.length ? C.BATTLE_PRIZE[pl - 1].sparks : 0; };
+    const mine = this.rows("SELECT * FROM levels WHERE author = ? ORDER BY created DESC LIMIT 30", u.acc).map((r) => ({ ...this.meta(r), hide_reason: r.hide_reason || undefined,
+      earned: (earnedOf.get(r.id) || 0) + prizeOf(r), prize: prizeOf(r) || undefined }));
+    const tot = this.one("SELECT COUNT(*) AS n, COALESCE(SUM(plays), 0) AS plays, COALESCE(SUM(completes), 0) AS completes, COALESCE(SUM(likes), 0) AS likes FROM levels WHERE author = ?", u.acc);
+    const aEarn = this.one("SELECT COALESCE(SUM(amount), 0) AS s FROM log WHERE acc = ? AND kind IN ('author', 'battle')", u.acc);
+    const author = { levels: tot.n, plays: tot.plays, completes: tot.completes, likes: tot.likes, earned: aEarn.s };
     const done = this.rows("SELECT lid FROM completes WHERE acc = ? ORDER BY at DESC LIMIT 300", u.acc).map((r) => r.lid);
     const liked = this.rows("SELECT lid FROM likes WHERE acc = ? ORDER BY at DESC LIMIT 300", u.acc).map((r) => r.lid);
     return { ok: true, sparks: w.sparks, total: w.total, owned, badge: w.badge, banned: !!w.banned, ban_reason: w.ban_reason || undefined,
-      today: { sparks: w.p_day, levels: w.p_lv, author: w.a_day, published: w.pub_day }, caps: C.CAPS, mine, done, liked, week: this.week() };
+      today: { sparks: w.p_day, levels: w.p_lv, author: w.a_day, published: w.pub_day }, caps: C.CAPS, mine, author, done, liked, week: this.week() };
   }
   async publish(b, u, ip) {
     const w = this.wallet(u.acc);
