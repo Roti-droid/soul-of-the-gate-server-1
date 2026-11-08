@@ -42,9 +42,9 @@ import { Site, handleSite, WEB_STATE_RE } from "./site.js";
 export { Donate, Accounts, Online, Match, RaidHub, Chest3, ModesHub, PushMatch, Creator, Site };
 
 // website pages (one shell: public/site/index.html, client-side routing)
-const SITE_PAGES = new Set(["/", "/chapters", "/download", "/news", "/login", "/account", "/dev"]);
+const SITE_PAGES = new Set(["/", "/chapters", "/vcr", "/download", "/news", "/login", "/account", "/dev"]);
 // query keys a link to the WEBSITE may carry; any other key on "/" (?debug, ?nopro, ?tgWebApp…) is a game deep link -> /play
-const SITE_QUERY = /^(seehim|ft|tape|tapes|why|lang|utm_[a-z]+|fbclid|gclid|yclid|ref|from|err|step)$/;
+const SITE_QUERY = /^(seehim|ft|tape|tapes|why|diary|lang|utm_[a-z]+|fbclid|gclid|yclid|ref|from|err|step)$/;
 function gameDeepLink(url) {
   for (const k of url.searchParams.keys()) if (!SITE_QUERY.test(k)) return true;
   return false;

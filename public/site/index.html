@@ -23,7 +23,7 @@
 <meta property="og:image" content="/og-image.png">
 <link rel="icon" type="image/svg+xml" href="/site/img/gate.svg">
 <link rel="preload" href="/site/fonts/ps2p-lat.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/site/site.css?v=7">
+<link rel="stylesheet" href="/site/site.css?v=8">
 </head>
 <body>
 <canvas id="stars" aria-hidden="true"></canvas>
@@ -33,6 +33,7 @@
   <nav class="nav" id="nav">
     <a href="/" data-link data-page="home">Главная</a>
     <a href="/chapters" data-link data-page="chapters">Главы</a>
+    <a href="/vcr" data-link data-page="vcr">Видеомагнитофон</a>
     <a href="/download" data-link data-page="download">Скачать</a>
     <a href="/news" data-link data-page="news">Новости</a>
     <a href="/play" class="nav-play">Играть</a>
@@ -70,6 +71,15 @@
       <h1 class="h1">ГЛАВЫ</h1>
       <p class="lead">Серия из 10 глав. Сейчас открыта Глава 1 — остальные Врата пока заперты.</p>
       <div class="chapters" id="chapters"></div>
+    </div>
+  </section>
+
+  <!-- VCR: the found tapes (cassettes drop only inside the hidden mini-game) -->
+  <section class="page" data-page="vcr" hidden>
+    <div class="wrap">
+      <h1 class="h1">ВИДЕОМАГНИТОФОН</h1>
+      <p class="lead">Найденные плёнки. Кассеты без подписи иногда находятся — где именно, придётся узнать самим.</p>
+      <div id="vcrHost" class="vcr-host"></div>
     </div>
   </section>
 
@@ -184,6 +194,6 @@
   <p class="gate-key" id="gateKey" aria-hidden="true"></p>
 </footer>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="/site/site.js?v=7" defer></script>
+<script src="/site/site.js?v=8" defer></script>
 </body>
 </html>

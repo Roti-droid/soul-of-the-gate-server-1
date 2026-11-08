@@ -3,8 +3,8 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var RM = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var PAGES = { "/": "home", "/chapters": "chapters", "/download": "download", "/news": "news", "/login": "login", "/account": "account", "/dev": "dev" };
-  var TITLES = { home: "Soul of the Gate — Душа Врат", chapters: "Главы · Soul of the Gate", download: "Скачать · Soul of the Gate",
+  var PAGES = { "/": "home", "/chapters": "chapters", "/vcr": "vcr", "/download": "download", "/news": "news", "/login": "login", "/account": "account", "/dev": "dev" };
+  var TITLES = { home: "Soul of the Gate — Душа Врат", chapters: "Главы · Soul of the Gate", vcr: "Видеомагнитофон · Soul of the Gate", download: "Скачать · Soul of the Gate",
     news: "Новости · Soul of the Gate", login: "Вход · Soul of the Gate", account: "Аккаунт · Soul of the Gate", dev: "Кабинет · Soul of the Gate" };
   var ME = null, GOOGLE = false, FILES = null, NEWS = null, cur = null;
 
@@ -33,6 +33,7 @@
       document.querySelectorAll(".page").forEach(function (p) { p.hidden = p !== next; p.classList.remove("leaving"); });
       next.style.animation = "none"; void next.offsetWidth; next.style.animation = "";
       cur = next; document.title = TITLES[page];
+      if (page !== "vcr" && PARC) PARC.close();
       document.querySelectorAll(".nav a[data-page]").forEach(function (a) { a.classList.toggle("on", a.dataset.page === page || (page === "account" || page === "dev") && a.id === "navUser"); });
       if (push) window.scrollTo(0, 0);
       enter(page); reveal();
@@ -56,6 +57,7 @@
   function enter(page) {
     if (page === "home") { renderChapters($("homeChapters"), true); loadNews().then(function () { renderNews($("homeNews"), 3); }); }
     if (page === "chapters") renderChapters($("chapters"), false);
+    if (page === "vcr") archiveOpen(null, $("vcrHost"));
     if (page === "download") loadFiles().then(renderFiles);
     if (page === "news") loadNews().then(function () { renderNews($("news"), 99); });
     if (page === "login") renderLogin();
@@ -771,7 +773,7 @@
       beep(win ? 880 : 140, win ? 0.3 : 0.4, win ? "triangle" : "sawtooth", 0.05, win ? 1320 : 60);
       menu('<div class="e2c e2-ttl" aria-label="' + (win ? "Врата затихли" : "Душа дрогнула") + '">' + gl(win ? "THE GATE IS SILENT" : "THE SOUL TREMBLED") + "</div>" +
         '<div class="e2c e2-big" aria-label="' + sc.toFixed(1) + '">' + gl(sc.toFixed(1)) + "</div>" +
-        '<div class="e2c e2-sub">' + gl(st.t.toFixed(1) + " - * " + st.sparks) + "</div>" + (nb ? '<div class="e2c e2-new" aria-label="Новый рекорд">' + gl("NEW BEST!") + "</div>" : "") +
+        '<div class="e2c e2-sub">' + gl(st.t.toFixed(1) + " - " + sparkWord() + st.sparks) + "</div>" + (nb ? '<div class="e2c e2-new" aria-label="Новый рекорд">' + gl("NEW BEST!") + "</div>" : "") +
         '<div class="e2-row">' + playBtn("AGAIN", "Ещё раз", "e2-go") + tapesBtn() + "</div>");
       scr.querySelector(".e2-go").focus();
     }
@@ -962,7 +964,7 @@
       setG(hudT, "t", (st ? st.t : 0).toFixed(1));
       var hp = st ? st.hp : 3;
       if (hudC.hp !== hp) { hudC.hp = hp; hudHp.innerHTML = [0, 1, 2].map(function (i) { return '<i class="' + (i < hp ? "on" : "") + '"></i>'; }).join(""); }
-      setG(hudSp, "s", "* " + (st ? st.sparks : 0));
+      setG(hudSp, "s", sparkWord() + (st ? st.sparks : 0));
     }
     function loop(now) {
       var dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -1256,6 +1258,148 @@
     });
     return threeP;
   }
+  // ---- typing: one deterministic rhythm drives both his fingers and the clicks
+  var TYPE_DT = 0.12;
+  function tHash(n) { var x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+  function typeKey(n) { return tHash(n) > 0.32 && Math.sin(n * TYPE_DT * 0.9) > -0.55 ? (tHash(n + 0.37) < 0.5 ? 0 : 1) : -1; }   // the hand that strikes in slot n (-1: none)
+  function typeDip(t, k) { var n = Math.floor(t / TYPE_DT), f = t / TYPE_DT - n; return typeKey(n) === k ? Math.sin(Math.min(1, f * 1.7) * Math.PI) : 0; }
+  function typeFinger(t, k) { return Math.floor(tHash(Math.floor(t / TYPE_DT) + k * 0.71) * 4); }
+  function keyClick(a, out) {
+    if (!a || !out) return;
+    var t = a.currentTime, s = a.createBufferSource(), bf = a.createBiquadFilter(), g = a.createGain(), o = a.createOscillator(), og = a.createGain();
+    s.buffer = noiseBuf(a); bf.type = "bandpass"; bf.frequency.value = 2600 + Math.random() * 1600; bf.Q.value = 2.5;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    o.type = "square"; o.frequency.setValueAtTime(420 + Math.random() * 80, t); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.02, t + 0.002); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+    s.connect(bf); bf.connect(g); g.connect(out); o.connect(og); og.connect(out); s.start(t, Math.random() * 0.5); s.stop(t + 0.05); o.start(t); o.stop(t + 0.03);
+  }
+  // ---- the faceless one's hands and clothes (the seed footage and every tape)
+  function mkHand(T, add, mat, hand, sd) {      // a gloved hand on the wrist: palm, four fingers, a thumb — joined to the sleeve
+    hand.add(add(new T.CylinderGeometry(0.032, 0.037, 0.06, 16), mat, [0, 0.005, 0]));
+    var palm = add(new T.SphereGeometry(1, 20, 14), mat, [0, -0.058, 0]); palm.scale.set(0.038, 0.05, 0.019); hand.add(palm);
+    var f = [];
+    for (var k = 0; k < 4; k++) { var fg = new T.Group(); fg.position.set(-0.026 + k * 0.0173, -0.1, 0); fg.add(add(new T.CapsuleGeometry(0.0088, 0.05 - Math.abs(k - 1.5) * 0.008, 4, 8), mat, [0, -0.03, 0])); hand.add(fg); f.push(fg); }
+    var th = new T.Group(); th.position.set(-sd * 0.036, -0.045, 0.008); th.rotation.set(0.35, 0, -sd * 0.55); th.add(add(new T.CapsuleGeometry(0.0095, 0.038, 3, 6), mat, [0, -0.028, 0])); hand.add(th);
+    return f;
+  }
+  function buildFig(T, add, M, o) {   // smooth: lathed body, capsule limbs, rounded joints (no visible seams)
+    var g = new T.Group(), cm = o.cm, km = o.km;
+    var lathe = function (pts, mat) { var gg = new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), 48); gg.scale(1, 1, 0.72); return add(gg, mat); };
+    var legs = [-1, 1].map(function (sd) { var hip = new T.Group(); hip.position.set(sd * 0.1, 1.0, 0); g.add(hip);
+      hip.add(add(new T.CapsuleGeometry(0.052, 0.86, 8, 16), o.dm, [0, -0.47, 0]));
+      var shoe = add(new T.SphereGeometry(1, 18, 12), o.shm, [0, -0.965, 0.045]); shoe.scale.set(0.056, 0.04, 0.125); hip.add(shoe); return hip; });
+    g.add(lathe(o.dress === "sweater" ? [[0.001, 0.9], [0.24, 0.9], [0.252, 0.95], [0.25, 1.02], [0.001, 1.06]]
+      : [[0.001, 0.42], [0.335, 0.42], [0.335, 0.44], [0.315, 0.58], [0.295, 0.74], [0.27, 0.9], [0.25, 1.02], [0.001, 1.06]], cm));
+    var torso = new T.Group(); torso.position.y = 1.02; g.add(torso);
+    torso.add(lathe([[0.001, -0.05], [0.24, -0.045], [0.232, 0.1], [0.216, 0.3], [0.232, 0.5], [0.25, 0.64], [0.246, 0.72], [0.215, 0.78], [0.14, 0.815], [0.06, 0.83], [0.001, 0.83]], cm));
+    var waist = add(new T.SphereGeometry(1, 32, 16), cm, [0, 0.0, 0]); waist.scale.set(0.245, 0.13, 0.178); torso.add(waist);   // a rounded waist: no gap when he leans
+    var neck = new T.Group(); neck.position.y = 0.8; torso.add(neck);
+    neck.add(add(new T.CylinderGeometry(0.042, 0.052, 0.26, 18), km, [0, 0.12, 0]));
+    var head = add(new T.SphereGeometry(1, 40, 30), km, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
+    var arms = [-1, 1].map(function (sd) {
+      var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
+      sh.add(add(new T.SphereGeometry(0.064, 18, 12), cm, [0, -0.01, 0]));
+      sh.add(add(new T.CapsuleGeometry(0.053, 0.42, 8, 16), cm, [0, -0.25, 0]));
+      var e2 = new T.Group(); e2.position.y = -0.5; sh.add(e2);
+      e2.add(add(new T.SphereGeometry(0.05, 16, 10), cm));
+      e2.add(add(new T.CapsuleGeometry(0.046, 0.4, 8, 16), cm, [0, -0.23, 0]));
+      var hand = new T.Group(); hand.position.y = -0.47; e2.add(hand);
+      return { sh: sh, el: e2, hand: hand, f: mkHand(T, add, o.hm || km, hand, sd), sd: sd };
+    });
+    if (o.dress === "coat") dressCoat(T, add, M, g, torso, arms, cm);
+    if (o.dress === "sweater") dressSweater(T, add, M, g, torso, arms, cm);
+    return { g: g, legs: legs, torso: torso, neck: neck, head: head, arms: arms };
+  }
+  function dressCoat(T, add, M, root, torso, arms, cm) {   // an open lab coat: lapels, collar, pockets, cuffs, a dark shirt and tie
+    var shirt = M({ color: 0x17181c, roughness: 0.85 }), tie = M({ color: 0x4d1218, roughness: 0.55 }), seam = M({ color: 0x7a776f, roughness: 1 }), pk = M({ color: 0xcdcac1, roughness: 0.95 });
+    var put = function (par, geo, mat, pos, rot) { par.add(add(geo, mat, pos, rot)); };
+    put(torso, new T.BoxGeometry(0.13, 0.46, 0.02), shirt, [0, 0.5, 0.166], [0.06, 0, 0]);
+    put(torso, new T.BoxGeometry(0.034, 0.36, 0.012), tie, [0, 0.49, 0.18], [0.06, 0, 0]);
+    put(torso, new T.BoxGeometry(0.046, 0.04, 0.02), tie, [0, 0.705, 0.172]);
+    put(torso, new T.TorusGeometry(0.058, 0.014, 6, 16), shirt, [0, 0.79, 0], [Math.PI / 2, 0, 0]);
+    put(torso, new T.TorusGeometry(0.085, 0.022, 6, 18), cm, [0, 0.77, -0.01], [Math.PI / 2 + 0.3, 0, 0]);
+    put(root, new T.BoxGeometry(0.07, 0.6, 0.012), shirt, [0, 0.72, 0.214], [-0.11, 0, 0]);
+    [-1, 1].forEach(function (sd) {
+      put(torso, new T.BoxGeometry(0.07, 0.34, 0.024), cm, [sd * 0.075, 0.56, 0.18], [0.07, 0, -sd * 0.24]);
+      put(torso, new T.BoxGeometry(0.006, 0.34, 0.026), seam, [sd * 0.043, 0.555, 0.184], [0.07, 0, -sd * 0.24]);
+      put(root, new T.BoxGeometry(0.006, 0.6, 0.016), seam, [sd * 0.038, 0.72, 0.219], [-0.11, 0, 0]);
+      put(root, new T.BoxGeometry(0.12, 0.11, 0.012), pk, [sd * 0.15, 0.66, 0.2], [-0.1, sd * 0.39, 0]);
+      put(root, new T.BoxGeometry(0.124, 0.008, 0.016), seam, [sd * 0.15, 0.716, 0.202], [-0.1, sd * 0.39, 0]);
+    });
+    put(torso, new T.BoxGeometry(0.075, 0.07, 0.01), pk, [0.125, 0.56, 0.153], [0.06, 0.39, 0]);
+    put(torso, new T.CylinderGeometry(0.006, 0.006, 0.09, 6), M({ color: 0x1a2a5a, roughness: 0.4 }), [0.11, 0.6, 0.16]);
+    put(root, new T.BoxGeometry(0.006, 0.34, 0.012), seam, [0, 0.6, -0.236], [0.11, 0, 0]);
+    put(root, new T.BoxGeometry(0.2, 0.035, 0.014), cm, [0, 0.98, -0.185], [0.05, 0, 0]);
+    arms.forEach(function (a) { a.el.add(add(new T.CylinderGeometry(0.05, 0.053, 0.06, 12), cm, [0, -0.42, 0])); a.el.add(add(new T.CylinderGeometry(0.0535, 0.0535, 0.01, 12), seam, [0, -0.395, 0])); });
+  }
+  function dressSweater(T, add, M, root, torso, arms, cm) {   // home clothes: a knitted sweater (ribbed collar, cuffs and hem)
+    var rib = M({ color: 0x2c3a2c, roughness: 1 });
+    torso.add(add(new T.CylinderGeometry(0.062, 0.085, 0.1, 18, 1, true), rib, [0, 0.84, 0]));
+    root.add(add(new T.CylinderGeometry(0.255, 0.26, 0.07, 20), rib, [0, 0.93, 0])); root.children[root.children.length - 1].scale.z = 0.72;
+    arms.forEach(function (a) { a.el.add(add(new T.CylinderGeometry(0.044, 0.046, 0.06, 12), rib, [0, -0.43, 0])); });
+  }
+  // ---- a plain human skull, sculpted from a sphere: the sockets and the nose are deep cavities (darkened by depth), no cracks
+  function skullGeo(T) {
+    var bell = function (d) { return d < 1 ? Math.sqrt(1 - d * d) : 0; };
+    function shade(g, fn) {
+      var P = g.attributes.position, n = P.count, col = new Float32Array(n * 3), v = new T.Vector3();
+      for (var i = 0; i < n; i++) { v.fromBufferAttribute(P, i); var r = fn(v.x, v.y, v.z); P.setXYZ(i, r[0], r[1], r[2]); col[i * 3] = r[3]; col[i * 3 + 1] = r[4]; col[i * 3 + 2] = r[5]; }
+      g.setAttribute("color", new T.BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+    }
+    var bone = function (k, x, y) { var m = 0.94 + 0.06 * Math.sin(x * 37 + y * 23) * Math.sin(y * 41 - x * 13); return [0.8 * k * m, 0.76 * k * m, 0.65 * k * m]; };
+    var c = shade(new T.SphereGeometry(1, 120, 90), function (x, y, z) {
+      var X = x, Y = y, Z = z, cav = 0, tooth = 0;
+      if (Y < 0) { X *= 1 - 0.3 * -Y; Z *= 1 - 0.08 * -Y; }
+      if (Z < 0) Z *= 1.1;
+      if (Z > 0.72) Z = 0.72 + (Z - 0.72) * 0.55;
+      if (z > 0.3) {
+        [-1, 1].forEach(function (sd) {
+          var d = Math.hypot((x - sd * 0.36) / 0.27, (y - 0.03) / 0.23), b = bell(d);
+          if (b) { Z -= b * 0.6; X -= sd * b * 0.05; cav = Math.max(cav, b); }
+          X += sd * 0.07 * bell(Math.hypot((x - sd * 0.64) / 0.22, (y + 0.16) / 0.14)) * (x * sd > 0 ? 1 : 0);   // cheekbones
+        });
+        Z += 0.05 * bell(Math.hypot(x / 0.75, (y - 0.27) / 0.07));                          // brow ridge
+        var nw = 0.045 + 0.075 * Math.min(1, Math.max(0, (-0.16 - y) / 0.2)), nd = bell(Math.hypot(x / nw, (y + 0.3) / 0.15));
+        if (nd) { Z -= nd * 0.32; cav = Math.max(cav, nd * 0.95); }
+        if (y < -0.5 && y > -0.68 && Math.abs(x) < 0.5) {                                      // the upper teeth
+          Z += 0.035; tooth = 1; var gap = ((Math.atan2(x, z) + 2) * 11) % 1;
+          if (gap < 0.16 || y < -0.66) cav = Math.max(cav, 0.75);
+        }
+        if (y <= -0.68) { Z *= 0.75; cav = Math.max(cav, 0.6); }
+      }
+      if (Math.abs(x) > 0.8 && y > -0.2 && y < 0.25 && z > -0.2) X *= 0.93;                    // temples
+      var k = 1 - Math.pow(Math.min(1, cav * 1.7), 0.5) * 0.985, cl = tooth && cav < 0.5 ? [0.86, 0.82, 0.68] : bone(k, x, y);
+      if (tooth && cav >= 0.5) cl = [0.05, 0.04, 0.03];
+      return [X * 0.074, Y * 0.09 + 0.012, Z * 0.1, cl[0], cl[1], cl[2]];
+    });
+    var j = shade(new T.SphereGeometry(1, 72, 40), function (x, y, z) {
+      var X = x * (1 - Math.max(0, -z) * 0.25), Y = y, Z = z, cav = 0, tooth = 0;
+      if (Y > 0.15) Y = 0.15 + (Y - 0.15) * 0.3;
+      Z += 0.12 * bell(Math.hypot(x / 0.4, (y + 0.6) / 0.35)) * (z > 0 ? 1 : 0);                 // chin
+      if (y > 0.45 && z > 0.45 && Math.abs(x) < 0.55) { tooth = 1; Y += 0.12; var gap = ((Math.atan2(x, z) + 2) * 12) % 1; if (gap < 0.16) cav = 0.8; }
+      if (z < -0.3) { Y *= 0.6; cav = Math.max(cav, 0.45); }
+      var cl = tooth ? (cav ? [0.05, 0.04, 0.03] : [0.86, 0.82, 0.68]) : bone(1 - cav * 0.6, x, y);
+      return [X * 0.058, Y * 0.03 - 0.02, Z * 0.055 + 0.045, cl[0], cl[1], cl[2]];
+    });
+    return { c: c, j: j };
+  }
+  function addKeys(T, add, M, scene, root, arms) {   // a keyboard desk with switches right under the fingertips (pose the arms first)
+    root.updateMatrixWorld(true);
+    var c = new T.Vector3(), p = new T.Vector3(), ys = 9, i, j;
+    arms.forEach(function (a) { a.hand.localToWorld(p.set(0, -0.13, 0)); c.add(p); ys = Math.min(ys, p.y); });
+    c.multiplyScalar(1 / arms.length);
+    var g = new T.Group(); g.position.set(c.x, ys - 0.006, c.z); g.rotation.y = root.rotation.y; scene.add(g);
+    var body = M({ color: 0x26282c, roughness: 0.6, metalness: 0.35 }), keyM = M({ color: 0xbab5a7, roughness: 0.7 }), dark = M({ color: 0x0e0f11, roughness: 0.5, metalness: 0.5 });
+    g.add(add(new T.BoxGeometry(0.6, 0.035, 0.24), body, [0, -0.018, 0.02]));
+    var kg = new T.BoxGeometry(0.028, 0.012, 0.028), km = new T.InstancedMesh(kg, keyM, 64), mx = new T.Matrix4(); km.castShadow = true; km.receiveShadow = true;
+    for (i = 0; i < 4; i++) for (j = 0; j < 16; j++) km.setMatrixAt(i * 16 + j, mx.makeTranslation(-0.255 + j * 0.034, 0.004, -0.06 + i * 0.034));
+    g.add(km);
+    var h = Math.max(0.1, g.position.y - 0.04);
+    g.add(add(new T.BoxGeometry(0.86, h, 0.52), dark, [0, -h / 2 - 0.036, 0.1]));
+    var led = [new T.MeshBasicMaterial({ color: 0xff3030 }), new T.MeshBasicMaterial({ color: 0x40ff9a })];
+    for (i = 0; i < 7; i++) { g.add(add(new T.CylinderGeometry(0.007, 0.007, 0.035, 6), keyM, [-0.24 + i * 0.08, 0.012, 0.11], [-0.5, 0, 0])); g.add(add(new T.BoxGeometry(0.012, 0.008, 0.012), led[i % 3 ? 1 : 0], [-0.24 + i * 0.08, 0.004, 0.08], null, 0)); }
+    g.add(add(new T.BoxGeometry(0.03, 0.09, 0.03), keyM, [0.36, 0.03, 0.06], [0.4, 0, 0]));
+    return g;
+  }
   // sound: a low drone, heartbeat thumps, a distorted burst
   function ftSound() {
     var a = SND.on ? ac() : null, nodes = [], out = null;
@@ -1267,6 +1411,7 @@
       n.connect(nf); nf.connect(ng); ng.connect(out); n.start(); nodes.push(n);
     } catch (e) { a = null; }
     return {
+      key: function () { keyClick(a, out); },
       thump: function (v) {
         if (!a) return;
         [0, 0.17].forEach(function (d, i) {
@@ -1302,7 +1447,7 @@
     var view = o.querySelector(".e4-view"), fxc = o.querySelector(".e4-fx"), fx = fxc.getContext("2d"), ts = o.querySelector(".e4-ts"), tc = o.querySelector(".e4-tc");
     // timeline (s): lab → turn to the portal → zoom → the cut → black → the letter
     var TL = RM ? { turn: 3, zoom: 4, cut: 6.5, black: 7.1, end: 7.6 } : { turn: 6.2, zoom: 8.2, cut: 13, black: 14, end: 15 };
-    var snd = ftSound(), t0 = 0, raf = 0, done = false, beatN = -1, flashed = false, burst = false, impl = null;
+    var snd = ftSound(), t0 = 0, raf = 0, done = false, beatN = -1, keyN = -1, flashed = false, burst = false, impl = null;
     var SEEN = drawSeen().c, FREEZE = null;
     try { var fz = new URLSearchParams(location.search).get("ft"); if (seeHim() && fz) FREEZE = Math.max(0, parseFloat(fz) || 0); } catch (e) { /* old browser */ }   // owner preview: ?seehim=1&ft=4 holds that moment
     FT = { o: o };
@@ -1328,6 +1473,7 @@
       var t = FREEZE != null ? FREEZE : (now - t0) / 1000;
       if (t >= TL.end) return finish();
       // heartbeat once the portal is in view
+      if (FREEZE == null && t < TL.turn + 0.6) { var kn = Math.floor(t / TYPE_DT); if (kn !== keyN) { keyN = kn; if (typeKey(kn) >= 0) snd.key(); } }   // the keys under his fingers
       if (t > TL.turn) { var bn = Math.floor((t - TL.turn) / 0.86); if (bn !== beatN) { beatN = bn; snd.thump(Math.min(1, 0.4 + (t - TL.turn) / 6)); } }
       if (t >= TL.cut && !burst) { burst = true; snd.burst(RM); }
       if (impl) impl.frame(t, TL);
@@ -1419,27 +1565,20 @@
     var dm = new T.PointsMaterial({ color: 0xffe9c0, size: 0.006, transparent: true, opacity: 0.4, depthWrite: false, blending: T.AdditiveBlending }); dispose.push(dm);
     scene.add(new T.Points(dg, dm));
     // the faceless one: very tall, very thin, hunched over the console, hands never still
-    var coatM = M({ color: 0xc9c7bf, roughness: 0.88 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32, metalness: 0 }), darkM = M({ color: 0x141414, roughness: 0.8 });
-    var fig = new T.Group(); fig.position.set(0.72, 0, -1.02); fig.rotation.y = Math.PI + 0.55; scene.add(fig);
-    var lathe = function (pts, mat, sx, sz) { var g = new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), 28); g.scale(sx || 1, 1, sz || 0.72); return add(g, mat); };
-    fig.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), darkM, [-0.1, 0.5, 0])); fig.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), darkM, [0.1, 0.5, 0]));
-    fig.add(lathe([[0.001, 0.42], [0.34, 0.42], [0.3, 0.7], [0.25, 1.02], [0.001, 1.06]], coatM));
-    var torso = new T.Group(); torso.position.y = 1.02; torso.rotation.x = 0.42; fig.add(torso);
-    torso.add(lathe([[0.001, -0.05], [0.25, -0.04], [0.22, 0.3], [0.25, 0.68], [0.2, 0.78], [0.06, 0.82], [0.001, 0.82]], coatM));
-    var neck = new T.Group(); neck.position.y = 0.8; neck.rotation.x = 0.25; torso.add(neck);
-    neck.add(add(new T.CylinderGeometry(0.04, 0.05, 0.26, 10), skinM, [0, 0.12, 0]));
-    var head = add(new T.SphereGeometry(1, 32, 24), skinM, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
-    var arms = [-1, 1].map(function (sd) {
-      var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
-      sh.add(add(new T.CapsuleGeometry(0.05, 0.42, 4, 10), coatM, [0, -0.25, 0]));
-      var el2 = new T.Group(); el2.position.y = -0.5; sh.add(el2);
-      el2.add(add(new T.CapsuleGeometry(0.042, 0.4, 4, 10), coatM, [0, -0.23, 0]));
-      var hand = new T.Group(); hand.position.y = -0.47; el2.add(hand);
-      hand.add(add(new T.BoxGeometry(0.06, 0.09, 0.025), skinM, [0, -0.04, 0]));
-      var fingers = [];
-      for (var f = 0; f < 4; f++) { var fg = new T.Group(); fg.position.set(-0.024 + f * 0.016, -0.085, 0); fg.add(add(new T.CapsuleGeometry(0.006, 0.1 - Math.abs(f - 1.5) * 0.012, 2, 5), skinM, [0, -0.055, 0])); hand.add(fg); fingers.push(fg); }
-      return { sh: sh, el: el2, hand: hand, f: fingers, sd: sd };
-    });
+    var coatM = M({ color: 0xe4e2db, roughness: 0.9 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32, metalness: 0 }), darkM = M({ color: 0x141414, roughness: 0.8 }), gloveM = M({ color: 0x2a2c2f, roughness: 0.5 });
+    var F0 = buildFig(T, add, M, { cm: coatM, km: skinM, dm: darkM, shm: M({ color: 0x070707, roughness: 0.35, metalness: 0.2 }), hm: gloveM, dress: "coat" });
+    var fig = F0.g, torso = F0.torso, neck = F0.neck, arms = F0.arms; scene.add(fig);
+    fig.position.set(0.72, 0, -1.02); fig.rotation.y = Math.PI + 0.55; torso.rotation.x = 0.42; neck.rotation.x = 0.25;
+    // he types: the arms rest on a keyboard desk placed right under his fingertips
+    function typePose(t) {
+      arms.forEach(function (a, k) {
+        var dip = RM ? 0 : typeDip(t, k);
+        a.sh.rotation.x = -0.95 + (RM ? 0 : Math.sin(t * 0.5 + k) * 0.03); a.sh.rotation.z = a.sd * 0.12;
+        a.el.rotation.x = -0.75 + dip * 0.07; a.hand.rotation.x = -0.25 - dip * 0.12; a.hand.rotation.z = 0;
+        a.f.forEach(function (fg, j) { fg.rotation.x = 0.35 + (j === typeFinger(t, k) ? dip * 0.7 : 0); });
+      });
+    }
+    typePose(0); addKeys(T, add, M, scene, fig, arms);
     // the portal: a glowing ring, a swirling inside, the heart beating in the middle
     var portal = new T.Group(); portal.position.set(-3.3, 1.75, -2.6); scene.add(portal);
     var ringM = new T.MeshStandardMaterial({ color: 0x220405, emissive: 0xd8200f, emissiveIntensity: 1.6, roughness: 0.3, metalness: 0.4 }); dispose.push(ringM);
@@ -1501,13 +1640,7 @@
       // dust drifts
       var pa = dg.attributes.position.array; for (var i = 1; i < pa.length; i += 3) { pa[i] -= 0.0015 * still; if (pa[i] < 0) pa[i] = 2.8; } dg.attributes.position.needsUpdate = still === 1;
       // the hands at work: restless, wrong
-      arms.forEach(function (a, k) {
-        var ph = t * (3.1 + k * 0.7) + k * 2;
-        a.sh.rotation.x = -0.95 + Math.sin(ph * 0.5) * 0.08 * still; a.sh.rotation.z = a.sd * 0.12;
-        a.el.rotation.x = -0.75 + Math.sin(ph) * 0.18 * still + (Math.sin(t * 13 + k) > 0.92 ? 0.12 : 0) * still;
-        a.hand.rotation.x = -0.3 + Math.sin(ph * 1.7) * 0.25 * still; a.hand.rotation.z = Math.sin(ph * 0.9) * 0.3 * still;
-        a.f.forEach(function (fg, j) { fg.rotation.x = 0.4 + Math.sin(t * 9 + j * 1.3 + k) * 0.6 * still; });
-      });
+      typePose(t);
       var tw = !RM && Math.sin(t * 1.3) > 0.97 ? 0.25 : 0;                                  // an occasional jerk of the head
       neck.rotation.z = Math.sin(t * 0.6) * 0.08 * still + tw; neck.rotation.y = sm(3.6, 4.4, t) * 0.5 * (1 - sm(5.2, 6, t)) * (RM ? 0 : 1);
       // the heart in the portal
@@ -1589,9 +1722,15 @@
     { k: "heart", en: "THE HEART", ru: "Сердце", odds: 500, d: "11.09.19░░", tm: 10933, len: 12, cap: "IT FORMED BY ITSELF. IT BEATS FASTER WHEN I AM NEAR.", line: "Плёнка №8. Что было в капсуле — не записано." },
     { k: "step", en: "THE STEP", ru: "Шаг", odds: 1000, d: "30.09.19░░", tm: 86381, len: 13.5, cap: "IT CALLED. I ANSWERED. DO NOT FOLLOW.", line: "Плёнка №9. Последняя из лаборатории." },
     { k: "beyond", en: "THE OTHER SIDE", ru: "По ту сторону", odds: 5000, d: "░░.░░.░░░░", tm: 0, len: 12, cap: "THE CAMERA WAS FOUND ON THE OTHER SIDE. THE LIGHT WAS STILL ROLLING.", line: "Плёнка №10. Найдена по ту сторону Врат." },
-    { k: "x", en: "???", ru: "???", odds: 1000000, d: "░░.░░.░░░░", tm: 0, len: 9, cap: "WHY", line: "Плёнка ???. Не должна существовать." }
+    { k: "x", en: "???", ru: "???", odds: 1000000, d: "░░.░░.░░░░", tm: 0, len: 9, cap: "WHY", line: "Плёнка ???. Не должна существовать." },
+    { k: "invite", en: "INVITATION", ru: "Приглашение", odds: 1000000, d: "░░.11.19░░", tm: 80140, len: 14, keep: 1, cap: "THE LETTER CAME BEFORE DAWN. THE NAME WOULD NOT STAY STILL.", line: "Плёнка №0. Приглашение.",
+      ltr: [9.9, 13.4] },
+    { k: "end", en: "THE LAST TAPE", ru: "Последняя", odds: 0, d: "░░.░░.░░░░", tm: 0, len: 25, keep: 1, cap: "THE BODY WAS NEVER FOUND. THE COAT WAS STILL WARM.", line: "Плёнка №∞. Дата стёрта.",
+      ltr: [0, 7.1], subs: [[16.2, 17.3, "HELP!"]] }
   ];
-  var TX = TAPES.length;        // 11: the secret one is the last slot
+  var TX = 11, T0 = 12, TF = 13;    // «???» is the slot after №10; №0 (the invitation) opens the shelf; №∞ appears only after both secrets
+  var SHELF = [T0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, TX, TF];
+  function tnum(id) { return id === TX ? "???" : id === T0 ? "0" : id === TF ? "∞" : String(id); }
   function qp(k) { try { return new URLSearchParams(location.search).get(k); } catch (e) { return null; } }
   var TAPES_ALL = qp("tapes") === "all", TAPE_DROP = qp("tapes") === "drop";
   // the store: f = filed (numbered) tapes, inv = unmarked cassettes waiting in the tray (their ids are hidden from the player)
@@ -1599,21 +1738,22 @@
   function tstore() {
     if (TSTORE) return TSTORE;
     var s = null; try { s = JSON.parse(lsGet(K_TAPES) || "null"); } catch (e) { s = null; }
-    var ok = function (a) { return Array.isArray(a) ? a.filter(function (v, i) { return v >= 1 && v <= TX && (v | 0) === v && a.indexOf(v) === i; }) : []; };
+    var ok = function (a) { return Array.isArray(a) ? a.filter(function (v, i) { return v >= 1 && v <= TAPES.length && (v | 0) === v && a.indexOf(v) === i; }) : []; };
     TSTORE = { f: ok(s && s.f), inv: ok(s && s.inv) };
-    if (TAPES_ALL) TSTORE = { f: TAPES.map(function (_, i) { return i + 1; }), inv: [] };
+    if (TAPES_ALL) TSTORE = { f: TAPES.map(function (_, i) { return i + 1; }), inv: [] };     // every slot, №∞ included
     return TSTORE;
   }
   function tsave() { if (!TAPES_ALL) lsSet(K_TAPES, JSON.stringify(tstore())); }
   function tapeHave(id) { var s = tstore(); return s.f.indexOf(id) >= 0 || s.inv.indexOf(id) >= 0; }
   function tapeRoll() {          // one roll per round: each tape its own odds; a tape already owned becomes nothing
     if (TAPE_DROP) { for (var i = 1; i < TX; i++) if (!tapeHave(i)) return i; return 0; }
-    var r = cryptoBelow(1000000), acc = 0;
-    for (var j = TX; j >= 1; j--) { acc += 1000000 / TAPES[j - 1].odds; if (r < acc) return tapeHave(j) ? 0 : j; }
+    var r = cryptoBelow(1000000), acc = 0, ids = [T0, TX, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];     // the odds stay inside: never shown to the player
+    for (var j = 0; j < ids.length; j++) { acc += 1000000 / TAPES[ids[j] - 1].odds; if (r < acc) return tapeHave(ids[j]) ? 0 : ids[j]; }
     return 0;
   }
-  function tierOf(odds) { return odds >= 1000000 ? "t6" : odds >= 5000 ? "t5" : odds >= 1000 ? "t4" : odds >= 500 ? "t3" : odds >= 100 ? "t2" : odds >= 20 ? "t1" : "t0"; }
-  function oddsTxt(o) { return "редкость 1/" + String(o).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  // №∞ never drops: once №0 and «???» are both on the shelf, it simply lies in the tray
+  function finalCheck() { var s = tstore(); if (s.f.indexOf(T0) >= 0 && s.f.indexOf(TX) >= 0 && !tapeHave(TF)) { s.inv.push(TF); tsave(); return true; } return false; }
+  function allTapes() { var s = tstore(); return TAPES.every(function (_, i) { return s.f.indexOf(i + 1) >= 0; }); }
   var CAS = ["################", "#..............#", "#.LLLLLLLLLLLL.#", "#.RRRRRRRRRRRR.#", "#.LgLLgLgLLgLL.#",
     "#..WWWWWWWWWW..#", "#..WooWWWWooW..#", "#..WWWWWWWWWW..#", "#...bbbbbbbb...#", "################"];
   var CASC = { "#": "#d6d6d6", ".": "#232323", L: "#e6dfcb", R: "#c4001f", g: "#3a3a3a", W: "#050505", o: "#bdbdbd", b: "#3c3c3c" }, CASCV = null;
@@ -1658,6 +1798,79 @@
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.05);
     }
+    // ---- the warm house: a piano (decaying partials + a felt hammer), and the music that stops
+    var pbus = null, dr = null;
+    function piano(f, vol) {
+      if (!a) return;
+      if (!pbus) { pbus = a.createGain(); var plp = a.createBiquadFilter(); plp.type = "lowpass"; plp.frequency.value = 3400; pbus.connect(plp); plp.connect(out); }
+      var t = a.currentTime, dec = Math.max(1.1, 3.6 - Math.log2(f / 110) * 0.75);
+      [[1, 1, "triangle"], [1.0016, 0.35, "sine"], [2.003, 0.38, "sine"], [3.007, 0.15, "sine"], [4.018, 0.06, "sine"]].forEach(function (q, i) {
+        var o = a.createOscillator(), g = a.createGain(), d = dec / (1 + i * 0.7); o.type = q[2]; o.frequency.value = f * q[0];
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * q[1], t + 0.004); g.gain.setTargetAtTime(0.0001, t + 0.004, d / 4.5);
+        o.connect(g); g.connect(pbus); o.start(t); o.stop(t + d + 0.3);
+      });
+      noise(0.035, Math.min(5200, f * 7), 1.4, vol * 0.16, "bandpass");
+    }
+    // ---- dread: a floor near infrasound, a minor-second shimmer, Shepard tones, an echo for drips and a broken music box
+    function drInit() {
+      if (dr || !a) return;
+      dr = { g: a.createGain(), sh: [], lv: 0, wet: a.createGain() }; dr.g.gain.value = 0; dr.g.connect(out);
+      [[31, 0.55, "sine"], [32.6, 0.5, "sine"], [43.8, 0.16, "sine"], [46.3, 0.12, "triangle"]].forEach(function (q) { var o = a.createOscillator(), g = a.createGain(); o.type = q[2]; o.frequency.value = q[0]; g.gain.value = q[1]; o.connect(g); g.connect(dr.g); o.start(); nodes.push(o); });
+      var n = a.createBufferSource(), lp = a.createBiquadFilter(), ng = a.createGain(); n.buffer = noiseBuf(a); n.loop = true; lp.type = "lowpass"; lp.frequency.value = 75; ng.gain.value = 0.7; n.connect(lp); lp.connect(ng); ng.connect(dr.g); n.start(); nodes.push(n);
+      var lfo = a.createOscillator(), lg = a.createGain(), hg = a.createGain(); lfo.frequency.value = 0.31; lg.gain.value = 0.008; hg.gain.value = 0.009; lfo.connect(lg); lg.connect(hg.gain); lfo.start(); nodes.push(lfo);
+      [1174.7, 1244.5, 1661.2].forEach(function (f) { var o = a.createOscillator(); o.frequency.value = f; o.connect(hg); o.start(); nodes.push(o); }); hg.connect(dr.g);
+      for (var i = 0; i < 6; i++) { var so = a.createOscillator(), sg = a.createGain(); so.frequency.value = 60; sg.gain.value = 0; so.connect(sg); sg.connect(dr.g); so.start(); nodes.push(so); dr.sh.push({ o: so, g: sg }); }
+      var dl = a.createDelay(1), fb = a.createGain(), dlp = a.createBiquadFilter(); dl.delayTime.value = 0.37; fb.gain.value = 0.45; dlp.type = "lowpass"; dlp.frequency.value = 2400;
+      dr.wet.gain.value = 0.6; dr.wet.connect(dl); dl.connect(dlp); dlp.connect(fb); fb.connect(dl); dlp.connect(out);
+      dr.kill = function () { try { fb.disconnect(); dl.disconnect(); } catch (e) { /* gone */ } };
+    }
+    function dread(lv, t, shep) {
+      if (!a) return; drInit();
+      var now = a.currentTime; dr.g.gain.setTargetAtTime(lv * 0.55, now, lv > dr.lv ? 0.5 : 0.05); dr.lv = lv;
+      dr.sh.forEach(function (q, i) { var ph = (t * 0.05 + i / 6) % 1; q.o.frequency.setTargetAtTime(55 * Math.pow(2, ph * 6), now, 0.03); q.g.gain.setTargetAtTime(Math.pow(Math.sin(Math.PI * ph), 2) * 0.05 * (shep || 0), now, 0.06); });
+    }
+    function box(f, vol, wob) {           // a music-box tine, sagging like a warped tape
+      if (!a) return; drInit();
+      var t = a.currentTime, o = a.createOscillator(), o2 = a.createOscillator(), g = a.createGain(), g2 = a.createGain(), lfo = a.createOscillator(), lg = a.createGain();
+      o.frequency.value = f; o2.frequency.value = f * 4.17; lfo.frequency.value = 3.5 + Math.random() * 2.5; lg.gain.value = 12 + wob * 28;
+      lfo.connect(lg); lg.connect(o.detune); lg.connect(o2.detune);
+      o.detune.setValueAtTime(-wob * 20, t); o.detune.linearRampToValueAtTime(-wob * 110, t + 1.8);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.setTargetAtTime(0.0001, t + 0.005, 0.55);
+      g2.gain.setValueAtTime(0.0001, t); g2.gain.exponentialRampToValueAtTime(vol * 0.3, t + 0.003); g2.gain.setTargetAtTime(0.0001, t + 0.003, 0.09);
+      o.connect(g); o2.connect(g2); g2.connect(g); g.connect(out); g.connect(dr.wet);
+      [o, o2, lfo].forEach(function (x) { x.start(t); x.stop(t + 2.6); });
+    }
+    function drip() {
+      if (!a) return; drInit();
+      var t = a.currentTime, f = 1700 + Math.random() * 1100, o = a.createOscillator(), g = a.createGain();
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.62, t + 0.07);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g); g.connect(out); g.connect(dr.wet); o.start(t); o.stop(t + 0.2);
+    }
+    function swell(dur, vol) {             // a reversed swell: grows, then is cut off
+      if (!a) return;
+      var t = a.currentTime, g = a.createGain(), bf = a.createBiquadFilter(), src = a.createBufferSource();
+      bf.type = "lowpass"; bf.frequency.setValueAtTime(200, t); bf.frequency.exponentialRampToValueAtTime(4200, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.3, t + dur); g.gain.setValueAtTime(vol || 0.3, t + dur); g.gain.linearRampToValueAtTime(0, t + dur + 0.025);
+      src.buffer = noiseBuf(a); src.connect(bf);
+      [98, 103.8, 138.6].forEach(function (f) { var o = a.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.connect(bf); o.start(t); o.stop(t + dur + 0.05); });
+      bf.connect(g); g.connect(out); src.start(t, Math.random() * 0.4); src.stop(t + dur + 0.05);
+    }
+    function screech() {
+      if (!a) return; var t = a.currentTime, bf = a.createBiquadFilter(), g = a.createGain(); bf.type = "bandpass"; bf.frequency.value = 3100; bf.Q.value = 3;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+      [2870, 3015, 4410].forEach(function (f) { var o = a.createOscillator(); o.type = "sawtooth"; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * 1.12, t + 0.6); o.connect(bf); o.start(t); o.stop(t + 0.75); });
+      bf.connect(g); g.connect(out); noise(0.4, 2400, 0.5, 0.25);
+    }
+    function shout() {                      // a muffled cry, no words: a voice through two formants and a hand over the mic
+      if (!a) return; var t = a.currentTime, o = a.createOscillator(), g = a.createGain(), lp = a.createBiquadFilter(), vib = a.createOscillator(), vg = a.createGain();
+      o.type = "sawtooth"; o.frequency.setValueAtTime(205, t); o.frequency.linearRampToValueAtTime(240, t + 0.12); o.frequency.linearRampToValueAtTime(170, t + 0.6);
+      vib.frequency.value = 6; vg.gain.value = 6; vib.connect(vg); vg.connect(o.frequency);
+      lp.type = "lowpass"; lp.frequency.value = 1100;
+      [[750, 1], [1250, 0.6]].forEach(function (q) { var bp = a.createBiquadFilter(), bg = a.createGain(); bp.type = "bandpass"; bp.frequency.value = q[0]; bp.Q.value = 5; bg.gain.value = q[1]; o.connect(bp); bp.connect(bg); bg.connect(lp); });
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.05); g.gain.setValueAtTime(0.5, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.65);
+      lp.connect(g); g.connect(out); o.start(t); o.stop(t + 0.7); vib.start(t); vib.stop(t + 0.7); noise(0.6, 900, 0.6, 0.12);
+    }
     var stat = null;
     function roarStat(lv) {      // radio static: band-limited noise
       if (!a) return;
@@ -1666,7 +1879,13 @@
       stat.g.gain.setTargetAtTime(lv * 0.25, a.currentTime, 0.05);
     }
     return {
-      noise: noise, tone: tone,
+      noise: noise, tone: tone, key: function () { keyClick(a, out); },
+      piano: piano, damp: function () { if (a && pbus) pbus.gain.setTargetAtTime(0.0001, a.currentTime, 0.07); },
+      dread: dread, box: box, drip: drip, swell: swell, screech: screech, shout: shout,
+      knock: function () { tone(150, 70, 0.1, 0.7); noise(0.07, 420, 1, 0.6, "lowpass"); noise(0.025, 1900, 1, 0.18); },
+      paper: function (d) { noise(d, 3600, 0.6, 0.07, "highpass"); noise(d * 0.8, 1200, 0.8, 0.04); },
+      foot: function (v) { tone(95, 40, 0.09, 0.32 * v); noise(0.07, 650, 1, 0.22 * v, "lowpass"); },
+      breath: function (v, inh) { noise(0.32, inh ? 1300 : 800, 0.9, 0.12 * v); },
       thump: function (v) { tone(66, 34, 0.24, 0.6 * v); tone(58, 34, 0.24, 0.42 * v, "sine", 0.17); },
       thud: function () { tone(90, 30, 0.5, 0.7); noise(0.35, 300, 0.7, 0.5, "lowpass"); noise(0.08, 2400, 1, 0.25); },
       pop: function () { noise(0.12, 3200, 0.8, 0.45); noise(0.5, 6000, 0.5, 0.12, "highpass", 0.05); tone(900, 120, 0.15, 0.12, "square"); },
@@ -1713,10 +1932,23 @@
       stop: function () {
         if (!a) return; var t = a.currentTime;
         try { out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.exponentialRampToValueAtTime(0.0001, t + 0.3); } catch (e) { /* gone */ }
-        nodes.forEach(function (x) { try { x.stop(t + 0.35); } catch (e) { /* gone */ } }); a = null;
+        nodes.forEach(function (x) { try { x.stop(t + 0.35); } catch (e) { /* gone */ } });
+        if (dr) setTimeout(dr.kill, 600); a = null;
       }
     };
   }
+  function midiF(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  // №0: a gentle waltz in F (original): [tape s, midi note, volume]; it breaks off at the knock
+  var INV_PIANO = (function () {
+    var B = 0.45, t0 = 0.6, r = [], at = function (bar, beat) { return t0 + (bar * 3 + beat) * B + (tHash(bar * 3 + beat) - 0.5) * 0.03; };
+    [[41, [57, 60]], [38, [57, 62]], [34, [53, 62]], [36, [52, 58]]].forEach(function (h, bar) {
+      r.push([at(bar, 0), h[0], 0.17]); [1, 2].forEach(function (bt) { if (bar === 3 && bt === 2) return; h[1].forEach(function (m) { r.push([at(bar, bt) + 0.01, m, 0.06]); }); });
+    });
+    [[0, 0, 72], [0, 2, 69], [1, 0, 74], [1, 1, 72], [1, 2, 69], [2, 0, 70], [2, 2, 74], [3, 0, 72], [3, 1, 67]].forEach(function (n) { r.push([at(n[0], n[1]), n[2], 0.15]); });
+    return r;
+  })();
+  // №∞: the broken lullaby (original), each tine more warped than the last; it ends on a leading tone that never resolves
+  var END_LULL = [[0.6, 76, 0.1], [1.15, 72, 0.15], [1.7, 74, 0.2], [2.3, 71, 0.3], [3.6, 72, 0.4], [4.1, 69, 0.55], [4.6, 70, 0.7], [5.2, 69, 0.9], [5.95, 64, 1.2], [6.6, 68, 1.6]];
   var sm01 = function (a, b, v) { v = Math.max(0, Math.min(1, (v - a) / (b - a))); return v * v * (3 - 2 * v); };
   function weldOn(t) { return t > 0.6 && t < 10.4 && t % 2.6 < 1.9 && !(t > 3.8 && t < 4.3); }
   var WHYD = { k: "why", ru: "почему", d: "░░.░░.░░░░", tm: 0, len: 11.6, subs: [[2.0, 3.3, "WHY..."], [4.4, 5.7, "WHY..."], [6.8, 8.1, "WHY..."]] };
@@ -1724,6 +1956,7 @@
   function tapeAudio(k, t, S, once) {
     if (k === "plans") { if (!RM && t > 1.8 && t < 6.5 && Math.random() < 0.05) S.noise(0.06 + Math.random() * 0.08, 3800, 2, 0.08); once("f1", t > 9.3, function () { S.tone(1800, 1700, 0.05, 0.05, "square"); }); }
     if (k === "frame") { if (weldOn(t) && Math.random() < 0.5) S.noise(0.05 + Math.random() * 0.06, 2200 + Math.random() * 3000, 0.7, 0.12 + Math.random() * 0.1); S.hum(weldOn(t) ? 0.15 : 0); }
+    if ((k === "start" && t < 7.0 || k === "fall" && t < 4.0) && !RM) { var kn = Math.floor(t / TYPE_DT); once("k" + kn, typeKey(kn) >= 0, S.key); }
     if (k === "start") {
       S.hum(t < 7.8 ? sm01(2, 7.2, t) : 0);
       [7.2, 7.45, 7.7].forEach(function (p, i) { once("p" + i, t > p, S.pop); });
@@ -1757,6 +1990,34 @@
       if (!RM && Math.random() < 0.025) S.tone(1800 + Math.random() * 1400, 1700 + Math.random() * 1400, 1.4, 0.035);
       if (t > 1) { var bb = Math.floor((t - 1) / 1.1); once("b" + bb, true, function () { S.thump(0.22); }); }
     }
+    if (k === "invite") {
+      INV_PIANO.forEach(function (n, i) { once("p" + i, t > n[0], function () { S.piano(midiF(n[1]), n[2]); }); });
+      [5.5, 5.95, 6.4].forEach(function (p, i) { once("k" + i, t > p, S.knock); });
+      once("dm", t > 5.56, S.damp);
+      S.dread(t < 6.5 ? 0 : t < 13.4 ? 0.14 + sm01(6.5, 12.5, t) * 0.3 : 0.55, t, 0.12 + sm01(9, 13, t) * 0.4);
+      once("sl", t > 7.75, function () { S.paper(0.55); });
+      once("fl", t > 8.8, function () { S.noise(0.07, 900, 0.8, 0.14, "lowpass"); S.paper(0.15); });
+      once("dp", t > 9.3, S.drip); once("op", t > 9.75, function () { S.paper(0.35); });
+      [[11.0, 83, 0.5], [11.6, 79, 0.8], [12.3, 78, 1.2]].forEach(function (n, i) { once("b" + i, t > n[0], function () { S.box(midiF(n[1]), 0.045, n[2]); }); });
+      once("rs", t > 12.9, function () { S.swell(0.5, 0.22); });
+    }
+    if (k === "end") {
+      S.dread(t < 7 ? 0.5 : t < 12.15 ? 0.3 : t < 13.4 ? 0.04 : t < 16 ? 0.95 : t < 17.4 ? 0.6 : t < 18.9 ? 0 : t < 23.4 ? 0.75 : 0.3, t, t < 7 ? 0.3 : t < 12.15 ? 1 : 0.5);
+      END_LULL.forEach(function (n, i) { once("m" + i, t > n[0], function () { S.box(midiF(n[1]), 0.07, n[2]); }); });
+      [1.3, 3.75, 5.4, 14.2, 20.3, 22.1].forEach(function (p, i) { once("d" + i, t > p, S.drip); });
+      once("tr", t > 7.0, function () { S.noise(0.25, 1800, 0.4, 0.4); });
+      if (t > 7.1 && t < 12.15) { var rn = Math.floor((t - 7.1) / 0.31); once("r" + rn, true, function () { S.foot(1); }); var bn = Math.floor((t - 7.1) / 0.45); once("br" + bn, true, function () { S.breath(1, bn % 2); }); }
+      once("bang", t > 12.1, function () { S.thud(); S.noise(0.2, 1500, 0.5, 0.35); });
+      once("sk", t > 13.45, function () { S.screech(); S.sting(); });
+      if (t > 13.5 && t < 18.9) { var hb = Math.floor((t - 13.5) / 0.62); once("h" + hb, true, function () { S.thump(0.75); }); }
+      if (t > 12.3 && t < 23.4) { var bb = Math.floor((t - 12.3) / 0.6); once("bb" + bb, true, function () { S.breath(0.7, bb % 2); }); }
+      [16.2, 16.85].forEach(function (p, i) { once("s" + i, t > p, S.shout); });
+      once("sw", t > 18.3, function () { S.swell(0.6, 0.35); });
+      once("gone", t > 18.9, function () { S.thud(); S.screech(); });
+      [[19.7, 76, 2.2], [20.4, 75, 2.8], [21.3, 70, 3.4]].forEach(function (n, i) { once("g" + i, t > n[0], function () { S.box(midiF(n[1]), 0.05, n[2]); }); });
+      if (t > 20.6 && t < 23.4) { var on = Math.floor((t - 20.6) / 0.16); once("o" + on, tHash(on * 3.1) > 0.35, function () { S.foot(0.35 + sm01(20.6, 23, t) * 0.65); }); }
+      if (t > 23.4) S.stat(0.75); else if (t > 20.6) S.stat(0);
+    }
     if (k === "x") {
       S.stat(0.35 + Math.random() * 0.2);
       [1.6, 4.4, 7.0].forEach(function (p, i) { once("w" + i, t > p, function () { S.whisper(0.35, true); }); });
@@ -1769,19 +2030,30 @@
       once("s", t > 9.15, S.scream);
     }
   }
+  // the two letters that are part of a tape (an HTML layer over the footage, under its grain)
+  var END_LETTER = "I WILL NOT COME BACK. I DREAM OF THE ABYSS EVERY NIGHT. IT KNOWS MY NAME. I WILL NOT BE WHAT I AM NOW. DO NOT LOOK FOR MY BODY. MY PLACE IS WHERE IT BELONGS. FORGET ME.";
+  function ltrHtml(kind) {
+    if (kind === "invite") return '<div class="e4-ltr e4-ru"><div class="e4-paper"><p>Здравствуй, <span class="e4-gn" role="img" aria-label="имя не разобрать"></span>.</p>' +
+      "<p>Мы приглашаем тебя вступить в&nbsp;Штаб королевских учёных.</p><p>Ждём тебя в&nbsp;лаборатории на&nbsp;рассвете.</p>" +
+      '<p class="e4-sig" role="img" aria-label="Подпись шифром Врат">' + lineSvg("V.D.G.", "e4-sg") + "</p></div></div>";
+    return '<div class="e4-ltr e4-ci"><div class="e4-paper"><div class="e4-lc" role="img" aria-label="Письмо шифром Врат">' + lineSvg(END_LETTER, "e4-lg") + "</div></div></div>";
+  }
+  var GLITCH = "█▓▒░#%&@¤§¶ΣЖЩЯ∆¿", GMARK = ["\u0336", "\u0334", "\u0337", "\u0489", "\u0352", ""];
+  function glitchName() { var n = 5 + (Math.random() * 3 | 0), r = ""; for (var i = 0; i < n; i++) r += GLITCH[Math.random() * GLITCH.length | 0] + GMARK[Math.random() * GMARK.length | 0]; return r; }
   var TP = null;
   function tapePlay(id, after, why) {
     if (TP || FT) return;
     var TD = why ? WHYD : TAPES[id - 1]; if (!TD) return;
     var kind = TD.k;
-    var o = el("div", "e4 e4-tape" + (why ? " e4-why" : "")); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", why ? "Почему" : "Запись №" + (id === TX ? "???" : id) + " — " + TD.ru);
-    o.innerHTML = '<div class="e4-view"></div><canvas class="e4-fx" aria-hidden="true"></canvas>' +
+    var o = el("div", "e4 e4-tape" + (why ? " e4-why" : "")); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", why ? "Почему" : "Запись №" + tnum(id) + " — " + TD.ru);
+    o.innerHTML = '<div class="e4-view"></div>' + (TD.ltr ? ltrHtml(kind) : "") + '<canvas class="e4-fx" aria-hidden="true"></canvas>' +
       '<div class="e4-osd" aria-hidden="true"><span class="e4-rec"><i></i>' + (why ? "PLAY" : "REC") + '</span><span class="e4-ts"></span><span class="e4-bat">▮▯▯</span><span class="e4-tc"></span></div>' +
       '<button class="e4-x" type="button" aria-label="Пропустить">✕</button>';
     document.body.appendChild(o); document.body.classList.add("e2-lock");
     var view = o.querySelector(".e4-view"), fxc = o.querySelector(".e4-fx"), fx = fxc.getContext("2d"), ts = o.querySelector(".e4-ts"), tc = o.querySelector(".e4-tc");
-    var LEN = RM ? Math.round(TD.len * 0.65 * 10) / 10 : TD.len, SC = TD.len / LEN;   // reduced motion: the same tape, shorter
-    var S = tapeSound(), t0 = 0, raf = 0, done = false, impl = null, fired = {}, FREEZE = null, order = null;
+    var LEN = RM && !TD.keep ? Math.round(TD.len * 0.65 * 10) / 10 : TD.len, SC = TD.len / LEN;   // (the two letter tapes keep their length: there is text to read)
+    var ltr = o.querySelector(".e4-ltr"), gname = o.querySelector(".e4-gn"), gT = -1;   // reduced motion: the same tape, shorter
+    var S = tapeSound(), t0 = 0, raf = 0, done = false, impl = null, fired = {}, FREEZE = null, order = null, stImg = null;
     var once = function (key, c, fn) { if (c && !fired[key]) { fired[key] = 1; fn(); } };
     if ((qp("tape") || qp("why")) && qp("ft")) FREEZE = Math.max(0, parseFloat(qp("ft")) || 0);
     TP = { o: o };
@@ -1802,9 +2074,14 @@
         if (!RM) { fx.fillStyle = "rgba(255,255,255,.07)"; for (var q = 0; q < 160; q++) fx.fillRect(Math.random() * W | 0, Math.random() * H | 0, 1, 1); }
       }
       if (kind === "step" && t >= 12.3 && (RM || Math.random() > 0.06)) centred("TAPE END", H / 2, Math.max(1, Math.floor(Math.min(W / 60, H / 30))), "#e8e8e8");
+      if (kind === "end" && t >= 23.4) {       // the tape cuts to static
+        if (!stImg || stImg.width !== W) stImg = fx.createImageData(W, H);
+        var sd = stImg.data; if (!RM || !stImg.done) { for (var q2 = 0; q2 < sd.length; q2 += 4) { var v2 = Math.random() < 0.5 ? 0 : Math.random() * 190; sd[q2] = sd[q2 + 1] = sd[q2 + 2] = v2; sd[q2 + 3] = 255; } stImg.done = 1; }
+        fx.putImageData(stImg, 0, 0);
+      }
       (TD.subs || []).forEach(function (s) {
         if (t < s[0] || t > s[1] || !RM && Math.random() < 0.05) return;
-        centred(s[2], H * 0.8, Math.max(1, Math.min(3, Math.floor(W / (s[2].length * 6 + 10)))), kind === "voices" ? "rgba(200,255,220,.85)" : "rgba(235,225,225,.9)");
+        centred(s[2], H * 0.8, Math.max(1, Math.min(3, Math.floor(W / (s[2].length * 6 + 10)))), kind === "voices" ? "rgba(200,255,220,.85)" : kind === "end" ? "rgba(255,240,230,.95)" : "rgba(235,225,225,.9)");
       });
       if (kind === "why" && t >= 9.55) {       // the screen floods with «?»
         var p = Math.max(2, Math.round(Math.min(W, H) / 70)), cw = (GW + 1) * p, ch = (GH + 2) * p, cols = Math.ceil(W / cw), rows = Math.ceil(H / ch), N = cols * rows;
@@ -1824,6 +2101,12 @@
       if (FREEZE == null) tapeAudio(kind, t, S, once);
       if (impl) impl.frame(t);
       overlay(t); osd(t);
+      if (ltr) {        // the letter in the shot: fades in and out, sways a little in the hand
+        var lv = sm01(TD.ltr[0] + (TD.ltr[0] ? 0.1 : 0.3), TD.ltr[0] + 0.9, t) * (1 - sm01(TD.ltr[1] - 0.5, TD.ltr[1], t));
+        ltr.style.opacity = lv.toFixed(3); ltr.style.visibility = lv > 0.001 ? "visible" : "hidden";
+        if (!RM) ltr.firstChild.style.transform = "translate(" + (Math.sin(t * 1.1) * 4).toFixed(1) + "px," + (Math.sin(t * 1.7) * 3 + (1 - lv) * 14).toFixed(1) + "px) rotate(" + (-1 + Math.sin(t * 0.8) * 0.6).toFixed(2) + "deg)";
+        if (gname && (gT < 0 || !RM && t - gT > 0.07)) { gT = t; gname.textContent = glitchName(); }
+      }
       raf = requestAnimationFrame(step);
     }
     function finish() {
@@ -1843,7 +2126,7 @@
   }
   // after a tape: its caption in the cipher + one vague Russian line
   function tapeCard(id, after) {
-    var TD = TAPES[id - 1], num = id === TX ? "???" : id;
+    var TD = TAPES[id - 1], num = tnum(id);
     var o = el("div", "e3 e3-letter e6"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Запись №" + num);
     o.innerHTML = '<div class="e3-red" aria-hidden="true"></div><div class="e3-card e6-card"><p class="e3-head">ЗАПИСЬ №' + num + (id === TX ? "" : " · " + esc(TD.ru.toUpperCase())) + "</p>" +
       '<div class="e3-cipher e6-text" aria-label="Подпись шифром Врат">' + lineSvg(TD.cap, "e3-g") + "</div>" +
@@ -1942,29 +2225,12 @@
     }
     function flickAll(p) { bulbs.forEach(function (L) { if (L.dead) { L.s.intensity = 0; L.b.color.setScalar(0.05); return; } if (!RM && Math.random() < p) L.f = Math.random() < 0.35 ? 0.06 : 0.55 + Math.random() * 0.4; else L.f += (1 - L.f) * 0.2; L.s.intensity = L.I * L.f; L.b.color.setScalar(0.25 + 0.75 * L.f); }); }
     // the faceless one (any material set: the coat, or the shadow)
-    var coatM = M({ color: 0xc9c7bf, roughness: 0.88 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32 }), darkM = M({ color: 0x141414, roughness: 0.8 }), shoeM = M({ color: 0x070707, roughness: 0.35, metalness: 0.2 });
-    function mkFig(cm, km, dm2, shm) {
-      var g = new T.Group(); scene.add(g);
-      var lathe = function (pts, mat) { var gg = new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), 28); gg.scale(1, 1, 0.72); return add(gg, mat); };
-      var legs = [-1, 1].map(function (sd) { var hip = new T.Group(); hip.position.set(sd * 0.1, 1.0, 0); g.add(hip);
-        hip.add(add(new T.CylinderGeometry(0.05, 0.045, 1.0, 10), dm2, [0, -0.5, 0])); hip.add(add(new T.BoxGeometry(0.1, 0.06, 0.25), shm, [0, -0.97, 0.05])); return hip; });
-      var hem = lathe([[0.001, 0.42], [0.34, 0.42], [0.3, 0.7], [0.25, 1.02], [0.001, 1.06]], cm); g.add(hem);
-      var torso = new T.Group(); torso.position.y = 1.02; g.add(torso);
-      torso.add(lathe([[0.001, -0.05], [0.25, -0.04], [0.22, 0.3], [0.25, 0.68], [0.2, 0.78], [0.06, 0.82], [0.001, 0.82]], cm));
-      var neck = new T.Group(); neck.position.y = 0.8; torso.add(neck);
-      neck.add(add(new T.CylinderGeometry(0.04, 0.05, 0.26, 10), km, [0, 0.12, 0]));
-      var head = add(new T.SphereGeometry(1, 32, 24), km, [0, 0.42, 0.02]); head.scale.set(0.12, 0.19, 0.14); neck.add(head);
-      var arms = [-1, 1].map(function (sd) {
-        var sh = new T.Group(); sh.position.set(sd * 0.25, 0.72, 0); torso.add(sh);
-        sh.add(add(new T.CapsuleGeometry(0.05, 0.42, 4, 10), cm, [0, -0.25, 0]));
-        var e2 = new T.Group(); e2.position.y = -0.5; sh.add(e2);
-        e2.add(add(new T.CapsuleGeometry(0.042, 0.4, 4, 10), cm, [0, -0.23, 0]));
-        var hand = new T.Group(); hand.position.y = -0.47; e2.add(hand);
-        hand.add(add(new T.BoxGeometry(0.06, 0.09, 0.025), km, [0, -0.04, 0]));
-        var f = []; for (var k = 0; k < 4; k++) { var fg = new T.Group(); fg.position.set(-0.024 + k * 0.016, -0.085, 0); fg.add(add(new T.CapsuleGeometry(0.006, 0.1 - Math.abs(k - 1.5) * 0.012, 2, 5), km, [0, -0.055, 0])); hand.add(fg); f.push(fg); }
-        return { sh: sh, el: e2, hand: hand, f: f, sd: sd };
-      });
-      return { g: g, legs: legs, torso: torso, neck: neck, head: head, arms: arms };
+    var coatM = M({ color: 0xe4e2db, roughness: 0.9 }), skinM = M({ color: 0xd4cfc6, roughness: 0.32 }), darkM = M({ color: 0x141414, roughness: 0.8 }), shoeM = M({ color: 0x070707, roughness: 0.35, metalness: 0.2 });
+    var gloveM = M({ color: 0x2a2c2f, roughness: 0.5 });
+    function mkFig(cm, km, dm2, shm, o) {     // the coat (or o.dress: "sweater" / "bare" for the shadow)
+      o = o || {};
+      var F = buildFig(T, add, M, { cm: cm, km: km, dm: dm2, shm: shm, hm: o.dress === "bare" ? km : o.dress === "sweater" ? km : gloveM, dress: o.dress || "coat" });
+      scene.add(F.g); return F;
     }
     function restless(F, t, amp, k0) {        // the hands never quite still
       F.arms.forEach(function (a, k) { a.f.forEach(function (fg, j) { fg.rotation.x = 0.4 + Math.sin(t * 9 + j * 1.3 + k + (k0 || 0)) * 0.5 * amp; }); });
@@ -2116,6 +2382,10 @@
       var smat = new T.LineBasicMaterial({ color: 0xffc27a, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }); dispose.push(smat);
       scene.add(new T.LineSegments(sg, smat));
       fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.62, 0, -3.18); fig.g.rotation.y = Math.atan2(W2.x - 1.62, W2.z + 3.18);
+      var torch = new T.Group(); torch.position.set(0, -0.08, 0.01); fig.arms[0].hand.add(torch);      // the welding torch in his glove
+      torch.add(add(new T.CylinderGeometry(0.016, 0.018, 0.16, 12), M({ color: 0x3a3226, roughness: 0.6 }), [0, -0.02, 0]));
+      torch.add(add(new T.CylinderGeometry(0.007, 0.012, 0.12, 10), M({ color: 0x9a8a6a, roughness: 0.3, metalness: 0.9 }), [0, -0.14, 0.03], [0.5, 0, 0]));
+      var mask = add(new T.BoxGeometry(0.2, 0.22, 0.03), M({ color: 0x15171a, roughness: 0.4, metalness: 0.3 }), [0, 0.42, 0.16], [-0.1, 0, 0]); fig.neck.add(mask);   // a welding visor over the blank face
       var last = 0, heat = 0;
       D.frame = function (t) {
         var dt = Math.min(0.05, Math.max(0, t - last)); last = t;
@@ -2151,6 +2421,9 @@
       var cons = console3(2.0, -3.05, -0.35);
       D.L = [lamp(-2.4, 3.55, -1.8, -2.4, 0, -2.4, 9, false), lamp(0, 3.55, -2.2, 0.2, 0, -2.6, 14, true), lamp(2.3, 3.55, -1.8, 2.0, 0, -2.6, 9, false)];
       fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.75, 0, -2.25); fig.g.rotation.y = Math.PI - 0.35;
+      var pose3 = function (t, lv) { fig.torso.rotation.x = 0.35; fig.arms.forEach(function (a, k) { var dip = RM || t > 7.0 ? 0 : typeDip(t, k); a.sh.rotation.set(-0.85, 0, a.sd * 0.1); a.el.rotation.x = -0.75 + dip * 0.07 + (RM ? 0 : Math.sin(t * (3 + k)) * 0.012 * lv); a.hand.rotation.x = -0.3 - dip * 0.12;
+        a.f.forEach(function (fg, j) { fg.rotation.x = 0.35 + (j === typeFinger(t, k) ? dip * 0.7 : 0) + (RM ? 0 : Math.sin(t * 9 + j + k) * 0.15 * lv); }); }); };
+      pose3(0, 0); addKeys(T, add, M, scene, fig.g, fig.arms);
       cable([[2.0, 0.02, -2.8], [0.8, 0.02, -2.6], [PC.x + 1.2, 0.05, PZ + 0.25]], 0.04);
       D.frame = function (t) {
         var lv = sm01(2, 7.2, t), dead = t > 7.8, fl = RM ? 1 : (Math.random() < lv * 0.5 ? 0.3 + Math.random() * 0.9 : 1);
@@ -2161,8 +2434,7 @@
         D.L.forEach(function (L, k) { var bt = 7.2 + k * 0.25; if (t > bt && !L.dead) { L.dead = true; } if (t > bt && t < bt + 0.06) { L.s.intensity = L.I * 5; L.b.color.setScalar(2); } });
         flickAll(lv * 0.25); D.L.forEach(function (L, k) { var bt = 7.2 + k * 0.25; if (t > bt && t < bt + 0.06) { L.s.intensity = L.I * 5; L.b.color.setScalar(2); } });
         cons.light.intensity = dead ? 0 : 1.8; cons.mat.color.setScalar(dead ? 0.02 : 1); moon.intensity = 0.45;
-        fig.arms.forEach(function (a, k) { a.sh.rotation.set(-0.85, 0, a.sd * 0.1); a.el.rotation.x = -0.75 + (RM ? 0 : Math.sin(t * (3 + k)) * 0.06 * (1 + lv * 2)); });
-        restless(fig, t, 0.6 + lv); fig.torso.rotation.x = 0.35; fig.neck.rotation.y = -0.6 * sm01(3.5, 4.5, t);   // he looks at the ring
+        pose3(t, lv); fig.neck.rotation.y = -0.6 * sm01(3.5, 4.5, t);   // he looks at the ring
         var pos = V.set(0.1, 1.45, 2.7), look = V2.set(0.4, 1.45, -3.2), roll = 0;
         if (t > 8.3) {          // the camera falls
           var f = RM ? 1 : sm01(8.3, 8.9, t), hitK = t > 8.9 && !RM ? Math.max(0, 1 - (t - 8.9) * 4) : 0;
@@ -2180,7 +2452,7 @@
       portal = ring3(6.283, true); console3(2.4, -3.0, -0.45);
       D.l = lamp(0.6, 3.55, 1.2, 0.0, 0, -1.2, 5, true);
       var shade = M({ color: 0x050505, roughness: 1 });
-      fig = mkFig(shade, shade, shade, shade); fig.g.scale.set(1, 1.12, 1); fig.g.visible = false; fig.g.position.set(0.95, 0, -2.05); fig.g.rotation.y = Math.atan2(-0.3 - 0.95, -0.9 + 2.05);
+      fig = mkFig(shade, shade, shade, shade, { dress: "bare" }); fig.g.scale.set(1, 1.12, 1); fig.g.visible = false; fig.g.position.set(0.95, 0, -2.05); fig.g.rotation.y = Math.atan2(-0.3 - 0.95, -0.9 + 2.05);
       D.frame = function (t) {
         var b = beat(t * 0.7);
         portal.m.emissiveIntensity = 0.55 + b * 1.5; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = 0.6 + b; portal.dm.uniforms.uA.value = 0.96;
@@ -2205,6 +2477,8 @@
       var c5 = console3(1.6, -2.65, 0);
       D.l = lamp(1.4, 3.55, -1.4, 1.6, 0, -2.4, 12, true);
       fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.position.set(1.6, 0, -1.85); fig.g.rotation.y = Math.PI;
+      fig.torso.rotation.x = 0.4; fig.arms.forEach(function (a) { a.sh.rotation.set(-0.9, 0, a.sd * 0.12); a.el.rotation.x = -0.72; a.hand.rotation.x = -0.3; });
+      var kb5 = addKeys(T, add, M, scene, fig.g, fig.arms);
       var tripod = new T.Group(); tripod.position.set(2.6, 0, -1.65); scene.add(tripod);
       D.frame = function (t) {
         var b = beat(t), shake = sm01(0.5, 4.0, t), fall = RM ? (t > 4.6 ? 1 : 0) : sm01(4.2, 5.0, t), floor = t > (RM ? 4.6 : 5.4);
@@ -2215,11 +2489,12 @@
         D.l.I = 12 * (brown ? 0.15 : 1); flickAll(0.02 + shake * 0.06);
         if (floor) { D.l.s.intensity *= 0.35; c5.light.intensity = 0.5; }
         var tr = RM ? 0 : shake * (1 - fall);
-        fig.arms.forEach(function (a, k) {
-          a.sh.rotation.set(-0.9 + (Math.random() - 0.5) * 0.1 * tr, 0, a.sd * 0.12 + (Math.random() - 0.5) * 0.08 * tr);
-          a.el.rotation.x = -0.72 + (Math.random() - 0.5) * 0.25 * tr; a.hand.rotation.z = (Math.random() - 0.5) * 0.5 * tr; a.hand.rotation.x = -0.3 + (Math.random() - 0.5) * 0.4 * tr;
-        });
-        restless(fig, t * (1 + shake * 3), 0.5 + shake * 1.5); fig.torso.rotation.x = 0.4 + fall * 0.5; fig.neck.rotation.z = (RM ? 0 : (Math.random() - 0.5) * 0.15 * tr);
+        fig.arms.forEach(function (a, k) {       // typing, then the hands start to shake on the keys
+          var dip = RM || t > 4.0 ? 0 : typeDip(t, k) * (1 - shake * 0.6);
+          a.sh.rotation.set(-0.9 + (Math.random() - 0.5) * 0.05 * tr, 0, a.sd * 0.12 + (Math.random() - 0.5) * 0.04 * tr);
+          a.el.rotation.x = -0.72 + dip * 0.07 + (Math.random() - 0.5) * 0.08 * tr; a.hand.rotation.z = (Math.random() - 0.5) * 0.3 * tr; a.hand.rotation.x = -0.3 - dip * 0.12 + (Math.random() - 0.5) * 0.2 * tr;
+          a.f.forEach(function (fg, j) { fg.rotation.x = 0.35 + (j === typeFinger(t, k) ? dip * 0.7 : 0) + (RM ? 0 : Math.sin(t * 20 + j * 1.3 + k) * 0.4 * tr); });
+        }); fig.torso.rotation.x = 0.4 + fall * 0.5; fig.neck.rotation.z = (RM ? 0 : (Math.random() - 0.5) * 0.15 * tr);
         fig.g.position.y = -fall * 1.3; fig.g.position.x = 1.6 + fall * 0.35; fig.g.rotation.z = -fall * 0.9; fig.g.visible = !floor;
         var pos, look, roll, fov;
         if (!floor) {
@@ -2241,6 +2516,7 @@
       var clip = [new T.Plane(new T.Vector3(0, 0, 1), -PZ)];
       [coatM, skinM, darkM, shoeM].forEach(function (m) { m.clippingPlanes = clip; });
       fig = mkFig(coatM, skinM, darkM, shoeM); fig.g.rotation.y = Math.PI;
+      fig.g.traverse(function (m) { if (m.material) m.material.clippingPlanes = clip; });
       moon.intensity = 0.2;
       D.frame = function (t) {
         var b = beat(t), z = 1.2 - Math.min(t, 9.6) * 0.53, ph = (1.2 - z) / 0.62 * Math.PI, walking = t < 9.6;
@@ -2425,6 +2701,219 @@
         u.uExp.value = 1.45; u.uAb.value = 0.008; u.uK.value = t > 11.2 ? Math.max(0, 1 - (t - 11.2) / 0.7) : 1;
       };
     }
+    // ======== №0 «Приглашение»: a warm little house at night, someone at the piano (seen only from behind); three knocks; the letter
+    if (k === "invite") {
+      room.visible = false; moon.intensity = 0.05; hemi.color.set(0x3a2a1c); hemi.groundColor.set(0x140a05); hemi.intensity = 1.1;
+      scene.background.set(0x0b0705); scene.fog.color.set(0x120b07); scene.fog.density = 0.035; dm.color.set(0xffd9a0);
+      var paper0 = function (x, w, h) {      // warm wallpaper: stripes and small flowers
+        x.fillStyle = "#7a5634"; x.fillRect(0, 0, w, h);
+        for (var i = 0; i < w; i += 32) { x.fillStyle = "rgba(255,220,160,.07)"; x.fillRect(i, 0, 14, h); x.fillStyle = "rgba(60,30,10,.12)"; x.fillRect(i + 14, 0, 2, h); }
+        for (i = 0; i < 70; i++) { var fx0 = (i % 8) * 32 + 23, fy = ((i / 8) | 0) * 30 + (i % 2) * 15; x.fillStyle = "rgba(150,50,40,.45)"; x.beginPath(); x.arc(fx0, fy, 3, 0, 7); x.fill(); x.fillStyle = "rgba(90,110,60,.4)"; x.fillRect(fx0 - 1, fy + 3, 2, 6); }
+        for (i = 0; i < 3000; i++) { x.fillStyle = "rgba(30,15,5," + Math.random() * 0.08 + ")"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      };
+      var planks = function (x, w, h) {
+        for (var i = 0; i < 8; i++) { var v = 60 + Math.random() * 25 | 0; x.fillStyle = "rgb(" + (v + 40) + "," + (v + 10) + "," + (v - 20) + ")"; x.fillRect(0, i * h / 8, w, h / 8); x.fillStyle = "rgba(20,10,4,.6)"; x.fillRect(0, i * h / 8, w, 2); x.fillRect((i * 97) % w, i * h / 8, 2, h / 8); }
+        for (i = 0; i < 400; i++) { x.strokeStyle = "rgba(40,20,8," + Math.random() * 0.2 + ")"; x.beginPath(); var yy = Math.random() * h; x.moveTo(Math.random() * w, yy); x.lineTo(Math.random() * w, yy + (Math.random() - 0.5) * 3); x.stroke(); }
+      };
+      var wpM = M({ map: canvasTex(256, 256, paper0, [5, 1.6]), roughness: 0.9 }), flM = M({ map: canvasTex(256, 256, planks, [3, 3]), roughness: 0.55 }), ceilM = M({ color: 0x5a4636, roughness: 1 });
+      var house = add(new T.BoxGeometry(5.4, 2.6, 5.2), wpM, [0, 1.3, -0.4], null, 0); house.material = [wpM, wpM, ceilM, flM, wpM, wpM]; house.geometry.scale(-1, 1, 1); scene.add(house);
+      var woodM = M({ color: 0x3b2114, roughness: 0.4, metalness: 0.05 }), wood2 = M({ color: 0x5a3520, roughness: 0.6 }), ivory = M({ color: 0xeee6d4, roughness: 0.35 }), ebony = M({ color: 0x0c0a09, roughness: 0.3 }), brass = M({ color: 0xb08a3a, roughness: 0.3, metalness: 0.9 });
+      // wainscot
+      [[0, 0.45, -2.98, 5.4, 0], [-2.68, 0.45, -0.4, 5.2, Math.PI / 2], [2.68, 0.45, -0.4, 5.2, Math.PI / 2]].forEach(function (w) { scene.add(add(new T.BoxGeometry(w[3], 0.9, 0.04), wood2, [w[0], w[1], w[2]], [0, w[4], 0], 0)); scene.add(add(new T.BoxGeometry(w[3], 0.05, 0.07), woodM, [w[0], 0.92, w[2]], [0, w[4], 0], 0)); });
+      // the upright piano
+      var pg = new T.Group(); pg.position.set(-0.5, 0, -2.66); scene.add(pg);
+      pg.add(add(new T.BoxGeometry(1.5, 1.28, 0.55), woodM, [0, 0.64, 0]));
+      pg.add(add(new T.BoxGeometry(1.56, 0.05, 0.6), woodM, [0, 1.3, 0]));
+      pg.add(add(new T.BoxGeometry(1.46, 0.07, 0.3), woodM, [0, 0.735, 0.41]));
+      pg.add(add(new T.BoxGeometry(1.38, 0.03, 0.17), ivory, [0, 0.785, 0.44]));
+      for (var bk = 0; bk < 36; bk++) { var oc = bk % 5; pg.add(add(new T.BoxGeometry(0.014, 0.022, 0.1), ebony, [-0.67 + bk * 0.038 + (oc > 1 ? 0.012 : 0), 0.81, 0.405], null, 0)); }
+      pg.add(add(new T.BoxGeometry(1.46, 0.2, 0.04), woodM, [0, 0.93, 0.29], [-0.12, 0, 0]));
+      var sheet = add(new T.PlaneGeometry(0.52, 0.32), M({ color: 0xe9e0c8, roughness: 0.9 }), [0, 1.08, 0.3], [-0.22, 0, 0], 0); pg.add(sheet);
+      [-0.7, 0.7].forEach(function (x0) { pg.add(add(new T.BoxGeometry(0.06, 0.7, 0.06), woodM, [x0, 0.35, 0.47])); });
+      pg.add(add(new T.BoxGeometry(0.26, 0.2, 0.03), M({ color: 0x2a1a10, roughness: 0.6 }), [-0.45, 1.43, 0.05], [0, 0.2, 0]));   // a photo frame
+      pg.add(add(new T.CylinderGeometry(0.05, 0.07, 0.22, 14), M({ color: 0x6a2a24, roughness: 0.4 }), [-0.15, 1.43, 0.08]));     // a vase
+      // the lamp on the piano: the only warm light
+      var shadeM = M({ color: 0xf2c287, emissive: 0xffa24a, emissiveIntensity: 0.9, roughness: 0.9, side: T.DoubleSide });
+      pg.add(add(new T.CylinderGeometry(0.02, 0.06, 0.26, 10), brass, [0.48, 1.45, 0.05]));
+      pg.add(add(new T.CylinderGeometry(0.11, 0.17, 0.2, 18, 1, true), shadeM, [0.48, 1.66, 0.05], null, 0));
+      var warm = new T.PointLight(0xffa456, 13, 8, 1.4); warm.position.set(-0.02, 1.64, -2.55); warm.castShadow = true; warm.shadow.mapSize.set(1024, 1024); warm.shadow.bias = -0.002; scene.add(warm);
+      var warm2 = new T.PointLight(0xff9a4a, 5, 7, 1.5); warm2.position.set(-2.1, 1.5, 0.9); scene.add(warm2);
+      // a floor lamp, a shelf of books, a rug, a clock, a window with curtains
+      scene.add(add(new T.CylinderGeometry(0.015, 0.015, 1.5, 8), brass, [-2.2, 0.75, 1.0])); scene.add(add(new T.CylinderGeometry(0.14, 0.22, 0.26, 18, 1, true), shadeM, [-2.2, 1.6, 1.0], null, 0));
+      var shelf = new T.Group(); shelf.position.set(-2.5, 0, -1.1); shelf.rotation.y = Math.PI / 2; scene.add(shelf);
+      shelf.add(add(new T.BoxGeometry(1.2, 1.9, 0.32), wood2, [0, 0.95, 0]));
+      var bookC = [0x6a1f1a, 0x24364a, 0x3a4a2a, 0x7a5a2a, 0x4a2a3a, 0x202020];
+      for (var r0 = 0; r0 < 4; r0++) for (var b0 = 0; b0 < 11; b0++) { var bh = 0.22 + tHash(r0 * 11 + b0) * 0.12; shelf.add(add(new T.BoxGeometry(0.075, bh, 0.22), M({ color: bookC[(r0 * 3 + b0) % 6], roughness: 0.8 }), [-0.5 + b0 * 0.095, 0.2 + r0 * 0.44 + bh / 2, 0.06], null, 0)); }
+      var rugT = canvasTex(128, 128, function (x, w, h) { x.fillStyle = "#5a1a14"; x.fillRect(0, 0, w, h); x.strokeStyle = "#c08a4a"; x.lineWidth = 4; x.strokeRect(8, 8, w - 16, h - 16); x.strokeStyle = "#2a3a5a"; x.lineWidth = 3; x.strokeRect(20, 20, w - 40, h - 40); x.fillStyle = "#c08a4a"; x.beginPath(); x.moveTo(w / 2, 30); x.lineTo(w - 30, h / 2); x.lineTo(w / 2, h - 30); x.lineTo(30, h / 2); x.fill(); });
+      scene.add(add(new T.PlaneGeometry(2.4, 1.6), M({ map: rugT, roughness: 1 }), [0.2, 0.004, -0.6], [-Math.PI / 2, 0, 0], 0));
+      var clock = add(new T.CylinderGeometry(0.16, 0.16, 0.04, 24), ivory, [1.4, 1.95, -2.95], [Math.PI / 2, 0, 0], 0); scene.add(clock);
+      var hand1 = add(new T.BoxGeometry(0.012, 0.11, 0.01), ebony, [1.4, 1.98, -2.92], null, 0); scene.add(hand1); var hand2 = add(new T.BoxGeometry(0.01, 0.08, 0.01), ebony, [1.4, 1.97, -2.92], [0, 0, 2], 0); scene.add(hand2);
+      var winM0 = new T.MeshBasicMaterial({ color: 0x0d1a33 }); dispose.push(winM0);
+      scene.add(add(new T.PlaneGeometry(0.9, 1.0), winM0, [-2.66, 1.55, 0.6], [0, Math.PI / 2, 0], 0));
+      [-0.55, 0.55].forEach(function (dz) { scene.add(add(new T.BoxGeometry(0.05, 1.5, 0.32), M({ color: 0x6a1e1a, roughness: 1 }), [-2.62, 1.4, 0.6 + dz])); });
+      // the front door: a brass mail slot
+      var door = new T.Group(); door.position.set(2.66, 0, 0.6); scene.add(door);
+      door.add(add(new T.BoxGeometry(0.06, 2.05, 0.92), wood2, [0, 1.025, 0]));
+      [0.55, 1.55].forEach(function (y) { door.add(add(new T.BoxGeometry(0.075, 0.6, 0.7), woodM, [-0.005, y, 0])); });
+      door.add(add(new T.BoxGeometry(0.03, 2.15, 0.08), woodM, [-0.02, 1.07, 0.5])); door.add(add(new T.BoxGeometry(0.03, 2.15, 0.08), woodM, [-0.02, 1.07, -0.5])); door.add(add(new T.BoxGeometry(0.03, 0.08, 1.08), woodM, [-0.02, 2.1, 0]));
+      door.add(add(new T.SphereGeometry(0.035, 12, 8), brass, [-0.06, 1.0, -0.36]));
+      door.add(add(new T.BoxGeometry(0.03, 0.07, 0.32), brass, [-0.05, 1.05, 0])); door.add(add(new T.BoxGeometry(0.035, 0.022, 0.26), ebony, [-0.055, 1.05, 0], null, 0));
+      var coldM = new T.MeshBasicMaterial({ color: 0x8fb4ff, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }); dispose.push(coldM);
+      var crack = add(new T.PlaneGeometry(0.07, 0.85), coldM, [2.6, 0.003, 0.6], [-Math.PI / 2, 0, 0], 0); scene.add(crack);   // cold light under the door
+      var cold = new T.SpotLight(0x9ab8ff, 0, 5, 0.9, 0.8, 1.5); cold.position.set(2.75, 0.05, 0.6); cold.target.position.set(1.0, 0, 0.5); scene.add(cold); scene.add(cold.target);
+      // the envelope
+      var envT = canvasTex(128, 80, function (x, w, h) { x.fillStyle = "#e6dcc4"; x.fillRect(0, 0, w, h); x.strokeStyle = "rgba(120,100,70,.5)"; x.beginPath(); x.moveTo(0, 0); x.lineTo(w / 2, h * 0.55); x.lineTo(w, 0); x.stroke(); x.fillStyle = "#8a1418"; x.beginPath(); x.arc(w / 2, h * 0.55, 9, 0, 7); x.fill(); });
+      var env = add(new T.BoxGeometry(0.13, 0.004, 0.23), M({ map: envT, roughness: 0.9 })); scene.add(env);
+      // the one at the piano: younger, a sweater, his back to us (never his face)
+      var swM = M({ color: 0x34452f, roughness: 1 }), jeans = M({ color: 0x1d2433, roughness: 0.9 }), hairM = M({ color: 0x1e140d, roughness: 0.85 });
+      fig = mkFig(swM, skinM, jeans, shoeM, { dress: "sweater" }); fig.g.position.set(-0.5, -0.36, -1.72); fig.g.rotation.y = Math.PI; fig.g.scale.set(0.96, 0.97, 0.96);
+      var hair = add(new T.SphereGeometry(1.07, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.72), hairM, [0, 0.06, -0.06], [-0.55, 0, 0]); fig.head.add(hair);
+      fig.legs.forEach(function (l) { l.visible = false; }); fig.head.position.y = 0.35;
+      [-1, 1].forEach(function (sd) {       // seated legs: thighs on the bench, shins down to the floor
+        scene.add(add(new T.CapsuleGeometry(0.058, 0.4, 8, 16), jeans, [-0.5 + sd * 0.11, 0.62, -1.98], [Math.PI / 2, 0, 0]));
+        scene.add(add(new T.CapsuleGeometry(0.05, 0.46, 8, 16), jeans, [-0.5 + sd * 0.11, 0.33, -2.2]));
+        var sh0 = add(new T.SphereGeometry(1, 16, 10), shoeM, [-0.5 + sd * 0.11, 0.04, -2.26]); sh0.scale.set(0.055, 0.04, 0.12); scene.add(sh0);
+      });
+      var bench = new T.Group(); bench.position.set(-0.5, 0, -1.72); scene.add(bench);
+      bench.add(add(new T.BoxGeometry(0.95, 0.07, 0.38), woodM, [0, 0.55, 0])); bench.add(add(new T.BoxGeometry(0.9, 0.04, 0.34), M({ color: 0x5a1a14, roughness: 1 }), [0, 0.6, 0]));
+      [[-0.42, -0.15], [0.42, -0.15], [-0.42, 0.15], [0.42, 0.15]].forEach(function (q) { bench.add(add(new T.BoxGeometry(0.05, 0.52, 0.05), woodM, [q[0], 0.26, q[1]])); });
+      var lastN = 0;
+      D.frame = function (t) {
+        // playing: hands on the keys, a soft sway; at the knock he stops, his hands lift and stay in the air
+        var stop = sm01(5.5, 5.8, t), noteK = 0;
+        INV_PIANO.forEach(function (n) { if (n[0] <= t) noteK = Math.max(noteK, 1 - Math.min(1, (t - n[0]) * 6)); });
+        fig.torso.rotation.x = 0.13 - stop * 0.08 + (RM ? 0 : Math.sin(t * 1.4) * 0.025 * (1 - stop)); fig.torso.rotation.z = RM ? 0 : Math.sin(t * 0.7) * 0.03 * (1 - stop);
+        fig.neck.rotation.x = -0.2 + (RM ? 0 : Math.sin(t * 1.4 + 0.5) * 0.04) * (1 - stop); fig.neck.rotation.y = stop * 0.18 * (1 - sm01(7.0, 8.0, t));
+        fig.arms.forEach(function (a, k) {
+          var sw = RM ? 0 : Math.sin(t * 2.2 + k * 1.7) * 0.06 * (1 - stop);
+          a.sh.rotation.set(-0.3 - stop * 0.15, 0, a.sd * (-0.12 + sw)); a.el.rotation.x = -0.95 + (k ? noteK : 0) * 0.05 - stop * 0.2; a.hand.rotation.x = -0.35;
+          a.f.forEach(function (fg, j) { fg.rotation.x = 0.35 + (RM ? 0 : Math.max(0, Math.sin(t * 7 + j * 1.9 + k)) * 0.5 * (1 - stop)); });
+        });
+        // the knock, the turn, the slot, the fall, the walk, the letter, then one look back: the bench is empty
+        var knockK = 0; [5.5, 5.95, 6.4].forEach(function (p) { if (t > p && t < p + 0.15) knockK = 1 - (t - p) / 0.15; });
+        var turn = sm01(6.6, 7.6, t), walk = sm01(8.95, 9.9, t), back = t > 13.4;
+        var e = sm01(7.75, 8.4, t), f = sm01(8.4, 8.85, t);
+        env.position.set(2.62 - e * 0.13 - f * 0.18, 1.05 - f * 1.045, 0.6 - f * 0.05); env.rotation.set(0, f * 0.35, -f * (RM ? 0 : 0.6) * (1 - f) * 3);
+        env.visible = t > 7.75 && t < 13.4;
+        coldM.opacity = sm01(6.4, 7.6, t) * 0.18 * (RM ? 1 : 0.85 + Math.random() * 0.15); cold.intensity = sm01(6.4, 8, t) * 2.2;
+        warm.intensity = 13 * (1 - sm01(6.4, 13, t) * 0.55) * (!RM && t > 6.35 && t < 6.45 ? 0.3 : 1); warm2.intensity = 5 * (1 - sm01(6.4, 12, t) * 0.7); hemi.intensity = 1.1 * (1 - sm01(6.4, 12, t) * 0.6);
+        shadeM.emissiveIntensity = 0.9 * warm.intensity / 13;
+        hand1.rotation.z = -t * 0.02; fig.g.visible = !back;
+        var pos = lerpV([1.55, 1.5, 1.25], [0.95, 1.45, 1.05], turn).clone().lerp(V2.set(1.7, 1.38, 0.85), walk);
+        var look = lerpV([-0.55, 0.95, -2.3], [2.62, 1.05, 0.6], turn).clone().lerp(V2.set(2.25, 0.02, 0.55), Math.max(f * 0.7, walk));
+        var fov = 64 - sm01(7.6, 8.2, t) * 16 + walk * 10;
+        if (back) { pos = V2.set(1.5, 1.48, 1.2); look = new T.Vector3(-0.5, 0.8, -2.0); fov = 62; }
+        shoot(pos, look, fov, 0, 0.7 + walk * 0.8, t);
+        if (knockK && !RM) cam.position.x += (Math.random() - 0.5) * 0.012 * knockK;
+        u.uExp.value = 1.45 - sm01(9.9, 13.4, t) * 0.4; u.uAb.value = 0.006 + sm01(6.5, 13, t) * 0.006; u.uGr.value = 0.11 + sm01(6.5, 13, t) * 0.06;
+        u.uBl.value = RM ? 0 : 1.6 * (1 - sm01(0, 1.4, t)) + 3 * Math.sin(Math.PI * turn) + 2 * Math.sin(Math.PI * walk) + (back ? 0.6 : 0);
+        u.uTear.value = RM ? 0 : (t > 13.4 && t < 13.55 ? 0.8 : 0); u.uRed.value = back ? 0.12 : 0;
+        u.uK.value = t > 13.4 && t < 13.46 ? 0 : 1;
+      };
+    }
+    // ======== №∞: the letter; a run down the corridor; he lies on the floor and his head is a skull; you look away; only the coat is left
+    if (k === "end") {
+      var X0 = 40;
+      var cor = add(new T.BoxGeometry(2.4, 2.7, 16), wallM, [X0, 1.35, 0], null, 0); cor.material = [wallM, wallM, wallM, floorM, wallM, wallM]; cor.geometry.scale(-1, 1, 1); scene.add(cor);
+      var tubeM = new T.MeshBasicMaterial({ color: 0xdfeeff }); dispose.push(tubeM);
+      var tubes = [], CL = [];
+      for (i = 0; i < 6; i++) { var tb = add(new T.BoxGeometry(0.12, 0.04, 1.1), tubeM, [X0, 2.66, 6 - i * 2.6], null, 0); scene.add(tb); tubes.push(tb); }
+      [4.5, 0, -4.5].forEach(function (z) { var l = new T.PointLight(0xcfe2ff, 2.4, 7, 1.5); l.position.set(X0, 2.4, z); scene.add(l); CL.push(l); });
+      for (i = 0; i < 8; i++) { var sd0 = i % 2 ? 1 : -1; scene.add(add(new T.BoxGeometry(0.06, 2.0, 0.9), M({ color: 0x1d1f22, roughness: 0.6, metalness: 0.4 }), [X0 + sd0 * 1.18, 1.0, 5.5 - i * 1.7], null, 0)); }
+      for (i = 0; i < 2; i++) scene.add(add(new T.CylinderGeometry(0.05, 0.05, 16, 8), pipeM, [X0 - 0.9 + i * 0.25, 2.5, 0], [Math.PI / 2, 0, 0], 0));
+      var hole = new T.MeshBasicMaterial({ color: 0x000000 }); dispose.push(hole);
+      scene.add(add(new T.PlaneGeometry(1.0, 2.1), hole, [X0, 1.05, -7.985], null, 0));
+      var hinge = new T.Group(); hinge.position.set(X0 - 0.5, 0, -7.95); scene.add(hinge);
+      hinge.add(add(new T.BoxGeometry(1.0, 2.1, 0.05), M({ color: 0x2a2c2e, roughness: 0.5, metalness: 0.5 }), [0.5, 1.05, 0]));
+      hinge.add(add(new T.BoxGeometry(0.3, 0.2, 0.02), M({ color: 0x8a1a1a, roughness: 0.6 }), [0.5, 1.55, 0.03], null, 0));
+      // the lab: the gate asleep, a console, a dead lamp; the doorway behind us
+      portal = ring3(6.283, true); console3(2.4, -3.0, -0.45);
+      D.l = lamp(-0.5, 3.55, -1.4, -0.5, 0, -1.9, 5, false);
+      scene.add(add(new T.PlaneGeometry(1.2, 2.3), hole, [-0.3, 1.15, 2.84], [0, Math.PI, 0], 0));
+      scene.add(add(new T.BoxGeometry(1.4, 0.1, 0.08), metal, [-0.3, 2.33, 2.8], null, 0));
+      // the camcorder's own light
+      var camL = new T.SpotLight(0xffe8c8, 0, 9, 0.36, 0.7, 1.8); camL.castShadow = true; camL.shadow.mapSize.set(1024, 1024); camL.shadow.bias = -0.0006; scene.add(camL); scene.add(camL.target);
+      // the others' flashlights, with visible beams
+      var FL = [-1.0, 0.4].map(function (x0) {
+        var l = new T.SpotLight(0xfff6e8, 0, 14, 0.32, 0.5, 1.3); l.position.set(x0, 1.35, 2.7); scene.add(l); scene.add(l.target);
+        var bg = new T.Group(); bg.position.copy(l.position); scene.add(bg);
+        var cg = new T.ConeGeometry(0.55, 4, 20, 1, true); cg.translate(0, -2, 0); cg.rotateX(-Math.PI / 2);
+        var bmM = new T.MeshBasicMaterial({ color: 0xfff1d8, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }); dispose.push(bmM);
+        bg.add(add(cg, bmM, null, null, 0));
+        var fm = new T.MeshBasicMaterial({ color: 0xfff8ec, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }); dispose.push(fm);
+        var flare = add(new T.CircleGeometry(0.035, 20), fm, null, null, 0), halo2 = add(new T.CircleGeometry(0.12, 24), fm, null, null, 0); flare.renderOrder = halo2.renderOrder = 5;
+        scene.add(flare); scene.add(halo2); return { l: l, bg: bg, m: bmM, x0: x0, fl: flare, ha: halo2, fm: fm };
+      });
+      // him: the coat, lying on his back; where the face was, a bare skull
+      var boneM = M({ color: 0xcfc6ad, roughness: 0.62 }), voidM = new T.MeshBasicMaterial({ color: 0x000000 }), toothM = M({ color: 0xd9d0b8, roughness: 0.4 }); dispose.push(voidM);
+      coatM.color.set(0xb9b6ad); fig = mkFig(coatM, skinM, darkM, shoeM);
+      var holder = new T.Group(); holder.position.set(-0.5, 0, -2.75); holder.rotation.y = Math.PI - 0.1; scene.add(holder); holder.add(fig.g);   // feet toward the gate, the head toward the door
+      fig.g.position.set(0, 0.19, 0); fig.g.rotation.set(-Math.PI / 2, 0, 0.06);
+      fig.head.visible = false; fig.neck.children[0].material = darkM;
+      var sk = new T.Group(); sk.position.set(0, 0.42, 0.02); fig.neck.add(sk);
+      var SG = skullGeo(T); dispose.push(SG.c, SG.j);
+      var skM = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0 }); dispose.push(skM);
+      sk.add(add(SG.c, skM));
+      var jaw = new T.Group(); jaw.position.set(0, -0.062, 0.004); jaw.rotation.x = 0.16; sk.add(jaw);
+      jaw.add(add(SG.j, skM));
+      var eyeM = new T.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false }); dispose.push(eyeM);
+      [-1, 1].forEach(function (sd) { sk.add(add(new T.SphereGeometry(0.0045, 8, 6), eyeM, [sd * 0.0262, 0.015, 0.05], null, 0)); });   // something is still in there
+      fig.arms.forEach(function (a) { a.sh.rotation.set(0, 0, a.sd * 0.55); a.el.rotation.set(-0.35, 0, 0); a.hand.rotation.set(0, 0, a.sd * 0.3); a.f.forEach(function (fg) { fg.rotation.x = 0.7; }); });
+      fig.legs.forEach(function (l, i2) { l.rotation.z = (i2 ? 1 : -1) * 0.07; });
+      var SKULL = new T.Vector3(-0.72, 0.2, -0.52), MID = new T.Vector3(-0.6, 0.1, -1.6);
+      D.frame = function (t) {
+        var pos, look, fov = 56, amt = 1, roll = 0, inLab = t >= 12.2;
+        cor.visible = !inLab; room.visible = inLab;
+        flickAll(inLab ? 0.08 : 0); D.l.I = 2.5;
+        portal.m.emissiveIntensity = 0.25 + beat(t) * 0.8; portal.dm.uniforms.uT.value = t; portal.dm.uniforms.uI.value = 0.25; portal.dm.uniforms.uA.value = 0.6; portal.pl.intensity = 1.5 + beat(t) * 5;
+        if (t < 7) { pos = V.set(X0, 1.5, 7.5); look = V2.set(X0, 1.5, 0); u.uK.value = 0; shoot(pos, look, fov, 0, 0, t); return; }
+        if (!inLab) {           // the run
+          var rz = 7.2 - (t - 7.0) * 2.75, ph = t * Math.PI * 2.9, bob = RM ? 0 : Math.abs(Math.sin(ph));
+          tubes.forEach(function (tb, j) { tb.visible = RM || !(j === 2 && Math.sin(t * 23) > 0.2) ; });
+          CL.forEach(function (l, j) { l.intensity = (RM ? 5 : (j === 1 && Math.sin(t * 23) > 0.2 ? 0.3 : 5)); });
+          hinge.rotation.y = -sm01(11.85, 12.15, t) * 1.7;
+          pos = V.set(X0 + (RM ? 0 : Math.sin(ph / 2) * 0.1), 1.52 + bob * 0.08, rz);
+          look = V2.set(X0 + (RM ? 0 : Math.sin(ph / 2) * 0.3), 1.35 + bob * 0.05, rz - 4);
+          roll = RM ? 0 : Math.sin(ph / 2) * 0.05; fov = 62; amt = 2.4;
+          camL.intensity = 0; FL.forEach(function (F) { F.l.intensity = 0; F.m.opacity = 0; });
+          shoot(pos, look, fov, roll, amt, t);
+          u.uBl.value = RM ? 0 : 1.4 + bob * 1.2; u.uExp.value = 1.45; u.uTear.value = RM ? 0 : (t < 7.25 ? 1 : 0) + (t > 12.05 ? 1 : 0); u.uAb.value = 0.009;
+          return;
+        }
+        var gone = t >= 18.9;
+        // the body: skull — then nothing but the coat lying flat
+        sk.visible = !gone; fig.neck.visible = !gone;
+        fig.legs.forEach(function (l) { l.visible = !gone; }); fig.arms.forEach(function (a) { a.hand.visible = !gone; });
+        fig.g.scale.set(1, 1, gone ? 0.16 : 1); fig.g.position.y = gone ? 0.03 : 0.19;
+        jaw.rotation.x = 0.16 + (!RM && t > 15.2 && t < 15.5 ? 0.12 : 0);
+        eyeM.opacity = t > 14.9 && t < 16.0 ? (RM ? 0.8 : 0.5 + Math.random() * 0.5) * sm01(14.9, 15.3, t) : 0;
+        var enter = sm01(12.2, 13.0, t), down = sm01(12.9, 13.5, t), appr = sm01(13.5, 16.0, t);
+        pos = lerpV([-0.3, 1.55, 2.4], [-0.45, 1.5, 1.05], enter).clone().lerp(V.set(-0.42, 1.0, -1.05), appr);
+        look = lerpV([-0.5, 1.3, -2.5], [-0.6, 0.15, -1.2], down).clone().lerp(SKULL, appr);
+        fov = 62 - appr * 22; amt = 1.2 + (1 - enter) * 1.5;
+        if (t > 16.0 && t < 17.4) { var lr = (t - 16.0) / 1.4; look = V2.set(-0.5 + Math.sin(lr * Math.PI * 2) * 3.2, 1.2, -2.2); fov = 62; amt = 2.2; pos = V.set(-0.12, 1.25, -1.2); }
+        if (t >= 17.4 && t < 18.9) { look = V2.set(-0.3, 1.3, 3); pos = V.set(-0.15, 1.4, -1.1); fov = 58; amt = 1.6; }
+        if (gone) { var push = sm01(19.2, 21.5, t); pos = V.set(0.05, 1.5 - push * 0.15, -0.6); look = V2.copy(MID); fov = 64 - push * 8; amt = 1.5; }
+        if (t > 21.5) { var tw = sm01(21.5, 22.2, t); look = look.clone().lerp(V2.set(-0.3, 1.3, 3), tw); fov = 60; amt = 2.4; }
+        shoot(pos, look, fov, roll, amt, t);
+        camL.position.copy(cam.position).add(V.set(0.22, 0.28, 0)); camL.target.position.copy(look); camL.intensity = 4.2 * (RM ? 1 : (Math.random() < 0.04 ? 0.4 : 1));
+        // the others: flashlights through the doorway
+        var come = sm01(20.8, 22.0, t);
+        FL.forEach(function (F, j) {
+          var tx = -0.5 + Math.sin(t * (1.3 + j * 0.7) + j * 2) * 1.2, tz = -1.6 + Math.cos(t * (1.1 + j * 0.5)) * 1.0;
+          if (t > 21.8) { tx = cam.position.x + (j ? 0.35 : -0.35); tz = cam.position.z + 0.5; }
+          F.l.position.set(F.x0 + come * 0.3, 1.35, 2.7 - come * 0.6); F.l.target.position.set(tx, 0, tz); F.l.intensity = come * 22;
+          F.bg.position.copy(F.l.position); F.bg.lookAt(F.l.target.position); F.bg.visible = false;
+          F.fl.position.copy(F.l.position); F.ha.position.copy(F.l.position); F.fl.lookAt(cam.position); F.ha.lookAt(cam.position); F.ha.scale.setScalar(1 + (RM ? 0 : Math.random() * 0.2)); F.fm.opacity = come * (t > 21.8 ? 0.45 : 0.2);
+        });
+        var glare = sm01(21.9, 22.6, t);
+        var hit = t > 13.45 && t < 13.9 ? 1 - (t - 13.45) / 0.45 : t > 18.9 && t < 19.3 ? 1 - (t - 18.9) / 0.4 : 0;
+        u.uBl.value = RM ? 0 : 1.2 * (1 - enter) + (t > 16 && t < 17.4 ? 2.5 : 0) + (t > 18.6 && t < 18.95 ? 4 : 0) + glare * 2;
+        u.uTear.value = RM ? 0 : (t < 12.4 ? 1 : 0) + hit * 0.6 + (t > 23 ? sm01(23, 23.4, t) : 0);
+        u.uAb.value = 0.008 + hit * 0.03 + appr * 0.004; u.uRed.value = gone ? 0.1 : appr * 0.06; u.uGr.value = 0.14 + hit * 0.15;
+        u.uExp.value = 1.15 + glare * 0.6 - (t >= 17.4 && t < 18.9 ? 0.2 : 0);
+      };
+    }
     // ======== «почему»: a figure from behind in the dark, whispering; it turns, and comes
     if (k === "why") {
       scene.fog.density = 0.11; moon.intensity = 0.04; hemi.intensity = 0.08;
@@ -2495,6 +2984,28 @@
         for (q = 0; q < 14; q++) { var sx = (q % 2 ? 0.08 : 0.68) * W + (q * 37 % 60), sh = 30 + q * 7 % 50; x.fillStyle = q % 3 ? "#3a2c7a" : "#1d4f64"; x.beginPath(); x.moveTo(sx, H * 0.62); x.lineTo(sx + 9, H * 0.62 - sh); x.lineTo(sx + 18, H * 0.62); x.fill(); }
         var rk = Math.min(1, Math.max(0, (t - 2) / 9.5)), oz = 1 / (1 + rk * 12);
         x.fillStyle = "#fff0ea"; x.shadowColor = "#ff5a4a"; x.shadowBlur = 16; x.beginPath(); x.arc(W / 2 + Math.sin(rk * 9) * 20 * oz, H * 0.56 + 60 * oz, 2 + 8 * oz, 0, 7); x.fill(); x.shadowBlur = 0;
+      } else if (k === "invite") {
+        var wl = Math.max(0.45, 1 - Math.max(0, t - 6.4) * 0.08);
+        x.fillStyle = "rgb(" + (70 * wl | 0) + "," + (44 * wl | 0) + "," + (24 * wl | 0) + ")"; x.fillRect(0, 0, W, H); x.fillStyle = "#2a160c"; x.fillRect(0, H * 0.72, W, H);
+        if (t < 6.6 || t > 13.4) {
+          x.fillStyle = "#24130a"; x.fillRect(W * 0.18 + jx, H * 0.38, W * 0.6, H * 0.36); x.fillStyle = "#e8e0cc"; x.fillRect(W * 0.2 + jx, H * 0.52, W * 0.56, H * 0.03);
+          var gl2 = x.createRadialGradient(W * 0.7, H * 0.3, 2, W * 0.7, H * 0.3, H * 0.5); gl2.addColorStop(0, "rgba(255,170,90," + 0.5 * wl + ")"); gl2.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = gl2; x.fillRect(0, 0, W, H);
+          if (t < 13.4) fig(W * 0.48 + jx, H * 0.86, H / 330, "#2f3d2a");
+        } else {
+          x.fillStyle = "#4a2a16"; x.fillRect(W * 0.3 + jx, H * 0.12, W * 0.4, H * 0.62); x.fillStyle = "#b08a3a"; x.fillRect(W * 0.42 + jx, H * 0.42, W * 0.16, H * 0.02);
+          x.fillStyle = "rgba(140,180,255,.35)"; x.fillRect(W * 0.3 + jx, H * 0.73, W * 0.4, 3);
+          var ef = Math.min(1, Math.max(0, (t - 8.4) / 0.45)); if (t > 7.75) { x.fillStyle = "#e6dcc4"; x.fillRect(W * 0.45 + jx, H * (0.43 + ef * 0.35), W * 0.1, H * 0.02 + ef * H * 0.03); }
+        }
+      } else if (k === "end") {
+        if (t >= 7 && t < 12.2) {
+          var bob = RM ? 0 : Math.abs(Math.sin(t * 9)) * 6; x.strokeStyle = "#4a4e55"; x.lineWidth = 2;
+          [[0, 0], [W, 0], [0, H], [W, H]].forEach(function (q) { x.beginPath(); x.moveTo(q[0], q[1]); x.lineTo(W / 2, H / 2 + bob); x.stroke(); });
+          for (q = 0; q < 6; q++) { var zz = ((t * 3 + q) % 6) / 6, sc2 = 1 - zz; x.fillStyle = "rgba(220,235,255," + sc2 + ")"; x.fillRect(W / 2 - 20 * sc2, H / 2 + bob - H * 0.45 * sc2, 40 * sc2, 3); }
+        } else if (t >= 12.2) {
+          var gone2 = t >= 18.9, lt = x.createRadialGradient(W / 2, H * 0.6, 4, W / 2, H * 0.6, H * 0.45); lt.addColorStop(0, "rgba(255,240,215,.35)"); lt.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = lt; x.fillRect(0, 0, W, H);
+          x.fillStyle = "#d8d6cf"; x.beginPath(); x.ellipse(W / 2 + jx, H * 0.66, W * 0.12, H * (gone2 ? 0.12 : 0.17), 0, 0, 7); x.fill();
+          if (!gone2) { x.fillStyle = "#e8e1cd"; x.beginPath(); x.ellipse(W / 2 + jx, H * 0.42, W * 0.07, H * 0.06, 0, 0, 7); x.fill(); x.fillStyle = "#000"; x.beginPath(); x.ellipse(W / 2 - W * 0.025 + jx, H * 0.415, W * 0.018, H * 0.016, 0, 0, 7); x.ellipse(W / 2 + W * 0.025 + jx, H * 0.415, W * 0.018, H * 0.016, 0, 0, 7); x.fill(); }
+        }
       } else if (k === "why") {
         var ln = RM ? (t > 9.1 ? 1 : 0) : Math.min(1, Math.max(0, (t - 9.1) / 0.35));
         fig(W / 2 + (RM ? 0 : Math.sin(t * 0.8) * 2), H * (0.9 + ln * 0.9), H / (330 - ln * 260), "#2a2a30");
@@ -2561,46 +3072,62 @@
     if (kind === "out") { beep(90, 0.1, "square", 0.05, 60); setTimeout(function () { beep(1200, 0.03, "square", 0.02); }, 90); }
     if (kind === "lit") beep(880, 0.12, "triangle", 0.03, 1320);
   }
-  function archiveOpen(onClose) {
-    if (ARC) return;
-    var o = el("div", "e7"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Записи");
-    o.innerHTML = '<div class="e7-in"><div class="e7-hd"><span class="e2c e7-ttl">' + gl("RECORDS") + '</span><small>Записи</small></div>' +
+  var PARC = null, ARCS = [], K_DIARY = "sotg.diary";
+  function arcsRender() { ARCS.forEach(function (f) { f(); }); }
+  // host: mount inline into a site page (the «Видеомагнитофон» section) instead of the full-screen overlay
+  function archiveOpen(onClose, host) {
+    var page = !!host;
+    if (page ? PARC : ARC) return page ? PARC : ARC;
+    finalCheck();
+    var o = el("div", "e7" + (page ? " e7-page on" : "")); o.tabIndex = -1; o.setAttribute("role", page ? "region" : "dialog"); o.setAttribute("aria-label", "Записи");
+    o.innerHTML = '<div class="e7-in"><div class="e7-hd"><span class="e2c e7-ttl">' + gl("RECORDS") + '</span><small>Записи</small>' +
+      '<button class="e7-book" type="button" hidden aria-label="Дневник">' + bookSvg() + '<span>Дневник</span></button></div>' +
       '<div class="e7-vcr"><div class="e7-face"><span class="e7-brand e2c" aria-hidden="true">' + gl("GATE") + '</span>' +
       '<button class="e7-door" type="button" aria-label="Видеомагнитофон: вставить выбранную кассету"><i class="e7-flap"></i></button>' +
       '<div class="e7-lcd" aria-hidden="true"><span class="e7-lt">--:--</span><i class="e7-trk"></i></div>' +
       '<div class="e7-btns"><span class="e7-led" aria-hidden="true"></span><button class="e7-play" type="button" aria-label="Воспроизвести">' + glyphSvg(">", "eg") + "</button></div></div>" +
       '<div class="e7-feet" aria-hidden="true"><i></i><i></i></div></div>' +
       '<div class="e7-tray"><span class="e2c e7-lbl" aria-label="Неизвестные кассеты">' + gl("UNKNOWN") + '</span><div class="e7-cs"></div><p class="e7-hint"></p></div>' +
-      '<div class="e7-shelf"></div></div><button class="e7-x" type="button" aria-label="Закрыть">✕</button>';
-    document.body.appendChild(o); document.body.classList.add("e2-lock");
-    var cs = o.querySelector(".e7-cs"), shelf = o.querySelector(".e7-shelf"), hint = o.querySelector(".e7-hint"), lcd = o.querySelector(".e7-lt"), vcr = o.querySelector(".e7-vcr"), door = o.querySelector(".e7-door");
-    var sel = -1, busy = false, drag = null, noClick = 0;
-    ARC = { o: o };
-    function render(lit) {
+      '<div class="e7-shelf"></div></div>' + (page ? "" : '<button class="e7-x" type="button" aria-label="Закрыть">✕</button>');
+    if (page) host.appendChild(o); else { document.body.appendChild(o); document.body.classList.add("e2-lock"); }
+    var cs = o.querySelector(".e7-cs"), shelf = o.querySelector(".e7-shelf"), hint = o.querySelector(".e7-hint"), lcd = o.querySelector(".e7-lt"), vcr = o.querySelector(".e7-vcr"), door = o.querySelector(".e7-door"), book = o.querySelector(".e7-book");
+    var sel = -1, busy = false, drag = null, noClick = 0, wait = 0;
+    var me = { o: o, page: page };
+    if (page) PARC = me; else ARC = me;
+    function render(lit, born) {
       var s = tstore();
+      var dOk = allTapes() || TAPES_ALL;
+      if (dOk && book.hidden) { book.hidden = false; if (lsGet(K_DIARY) !== "1" && !TAPES_ALL) { lsSet(K_DIARY, "1"); book.classList.add("born"); setTimeout(function () { toast("Открыт дневник"); }, 300); } }
       cs.innerHTML = s.inv.map(function (_, i) { return '<button class="e7-c' + (i === sel ? " sel" : "") + '" type="button" data-i="' + i + '" aria-label="Кассета без подписи ' + (i + 1) + '">' + casSvg("e7-cg") + "</button>"; }).join("");
       hint.textContent = s.inv.length ? "Перетащите кассету в видеомагнитофон (или нажмите на неё, потом на магнитофон)" : "Кассет нет — они иногда выпадают в игре";
       var h = "";
-      for (var id = 1; id <= TX; id++) {
-        var TD = TAPES[id - 1], has = s.f.indexOf(id) >= 0, last = id === TX, num = last ? "?" : id;
-        h += '<button class="e7-slot ' + tierOf(TD.odds) + (has ? " on" : "") + (last ? " last" : "") + (lit === id ? " lit" : "") + '" type="button" data-id="' + id + '" aria-label="Запись №' + num + (has && !last ? " — " + TD.ru : " — не найдена") + ", " + oddsTxt(TD.odds) + '">' +
-          "<b>№" + num + "</b>" + (has ? '<span class="e7-spine">' + casSvg("e7-sg") + '<span class="e2c">' + gl(last ? "WHY" : TD.en) + "</span></span><small>" + esc(TD.ru) + "</small>" : '<span class="e7-q">???</span><small>???</small>') +
-          "<em>" + oddsTxt(TD.odds) + "</em></button>";
-      }
+      SHELF.forEach(function (id) {
+        if (id === TF && !tapeHave(TF)) return;        // №∞ has no slot at all until it exists
+        var TD = TAPES[id - 1], has = s.f.indexOf(id) >= 0 && wait !== id, num = id === TX ? "?" : id === T0 && !has ? "?" : tnum(id);
+        h += '<button class="e7-slot' + (has ? " on" : "") + (id === TX ? " last" : "") + (id === T0 ? " first" : "") + (id === TF ? " fin" : "") + (lit === id ? " lit" : "") + (born === id ? " born" : "") + '" type="button" data-id="' + id + '" aria-label="Запись №' + (has || id === TF ? tnum(id) : "?") + (has && id !== TX ? " — " + TD.ru : " — не найдена") + '">' +
+          "<b>№" + num + "</b>" + (has ? '<span class="e7-spine">' + casSvg("e7-sg") + '<span class="e2c">' + gl(id === TX ? "WHY" : TD.en) + "</span></span><small>" + esc(TD.ru) + "</small>" : '<span class="e7-q">???</span><small>???</small>') + "</button>";
+      });
       shelf.innerHTML = h;
     }
+    ARCS.push(render);
     render();
+    book.addEventListener("click", function (e) { e.stopPropagation(); if (!busy) diaryOpen(); });
     function rectOf(e) { var r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
-    function fly(from, to, done, after) {          // a cassette ghost flying between two points
+    function fly(from, to, done, after) {          // a cassette ghost flying to a target that is re-read every frame (it follows a scrolling shelf)
       var g = el("div", "e7-ghost", casSvg("e7-cg")); document.body.appendChild(g);
-      var put = function (p) { g.style.transform = "translate(" + (p.x - 32) + "px," + (p.y - 20) + "px)"; };
-      put(from);
-      if (RM || !g.animate) { put(to); setTimeout(function () { g.remove(); done(); }, 60); return g; }
-      var a = g.animate([{ transform: "translate(" + (from.x - 32) + "px," + (from.y - 20) + "px) rotate(-4deg)" }, { transform: "translate(" + (to.x - 32) + "px," + (to.y - 20) + "px) rotate(0deg)" }], { duration: 460, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
-      a.onfinish = function () {
-        if (after === "in") { var b = g.animate([{ transform: "translate(" + (to.x - 32) + "px," + (to.y - 20) + "px)", opacity: 1 }, { transform: "translate(" + (to.x - 32) + "px," + (to.y - 6) + "px) scale(.92,.25)", opacity: 0 }], { duration: 260, easing: "ease-in", fill: "forwards" }); b.onfinish = function () { g.remove(); done(); }; }
-        else { g.remove(); done(); }
-      };
+      var at = function () { return typeof to === "function" ? to() : to; };
+      var put = function (x, y, r, sx, sy, op) { g.style.transform = "translate(" + (x - 32) + "px," + (y - 20) + "px) rotate(" + r + "deg) scale(" + sx + "," + sy + ")"; g.style.opacity = op; };
+      put(from.x, from.y, -4, 1, 1, 1);
+      if (RM) { var e0 = at(); put(e0.x, e0.y, 0, 1, 1, 1); setTimeout(function () { g.remove(); done(); }, 60); return g; }
+      var t0 = 0, D1 = 460, D2 = after === "in" ? 260 : 0;
+      requestAnimationFrame(function step(now) {
+        if (!t0) t0 = now;
+        var k = Math.min(1, (now - t0) / D1), e = 1 - Math.pow(1 - k, 3), b2 = at();
+        if (k < 1) { put(from.x + (b2.x - from.x) * e, from.y + (b2.y - from.y) * e, -4 * (1 - e), 1, 1, 1); requestAnimationFrame(step); return; }
+        var k2 = D2 ? Math.min(1, (now - t0 - D1) / D2) : 1;
+        if (k2 < 1) { put(b2.x, b2.y + 14 * k2, 0, 1 - 0.08 * k2, 1 - 0.75 * k2, 1 - k2); requestAnimationFrame(step); return; }
+        g.remove(); done();
+      });
       return g;
     }
     function insert(from, spec) {             // spec: { inv: index } or { id }
@@ -2608,22 +3135,32 @@
       var s = tstore(), id = spec.id || s.inv[spec.inv];
       if (spec.inv != null) { var src = cs.querySelector('[data-i="' + spec.inv + '"]'); if (src) src.style.visibility = "hidden"; }
       vcr.classList.add("open");
-      fly(from, rectOf(door), function () {
+      fly(from, function () { return rectOf(door); }, function () {
         vcr.classList.remove("open"); vcr.classList.add("load"); vcrSound("in"); lcd.textContent = "LOAD";
         setTimeout(function () { lcd.textContent = "PLAY"; vcr.classList.add("play"); }, RM ? 100 : 650);
         setTimeout(function () {
           tapePlay(id, function () {
             var fresh = false;
             if (spec.inv != null) { var i2 = s.inv.indexOf(id); if (i2 >= 0) s.inv.splice(i2, 1); if (s.f.indexOf(id) < 0) { s.f.push(id); fresh = true; } tsave(); }
-            vcr.classList.remove("play"); lcd.textContent = "EJECT"; vcrSound("out"); render();
-            var slot = shelf.querySelector('[data-id="' + id + '"]');
+            // the slot stays empty until the cassette has flown into it (no early pop), and the rects are read after the scroll settles
+            wait = fresh ? id : 0; vcr.classList.remove("play"); lcd.textContent = "EJECT"; vcrSound("out"); render();
+            var slot = shelf.querySelector('[data-id="' + id + '"]'), from = rectOf(door);
             if (slot && !RM) slot.scrollIntoView({ block: "nearest", behavior: "smooth" });
             setTimeout(function () {
-              fly(rectOf(door), slot ? rectOf(slot) : rectOf(door), function () {
-                vcr.classList.remove("load"); lcd.textContent = "--:--"; render(id); vcrSound("lit"); busy = false;
-                if (fresh) toast("Запись №" + (id === TX ? "???" : id) + " — на полке");
+              fly(from, function () { var sl = shelf.querySelector('[data-id="' + id + '"]'); return sl ? rectOf(sl) : rectOf(door); }, function () {
+                wait = 0; vcr.classList.remove("load"); lcd.textContent = "--:--"; render(id); vcrSound("lit"); busy = false;
+                if (fresh) toast("Запись №" + tnum(id) + " — на полке");
+                ARCS.forEach(function (f) { if (f !== render) f(); });
+                if (fresh && finalCheck()) {           // both secrets are home: a new slot opens after «???», and its cassette lies in the tray
+                  busy = true;
+                  setTimeout(function () {
+                    render(null, TF); busy = false; ARCS.forEach(function (f) { if (f !== render) f(); });
+                    var ns = shelf.querySelector('[data-id="' + TF + '"]'); if (ns && !RM) ns.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                    vcrSound("lit"); toast("Появилась ещё одна запись");
+                  }, RM ? 200 : 1400);
+                }
               });
-            }, RM ? 0 : 260);
+            }, RM ? 0 : 160);
           });
         }, RM ? 200 : 1150);
       }, "in");
@@ -2662,21 +3199,83 @@
     };
     o.addEventListener("pointerup", up); o.addEventListener("pointercancel", up);
     function close() {
-      if (!ARC || busy) return; ARC = null; document.removeEventListener("keydown", onKey);
+      if ((page ? PARC : ARC) !== me || busy && !page) return;
+      if (page) PARC = null; else ARC = null;
+      document.removeEventListener("keydown", onKey); var ri = ARCS.indexOf(render); if (ri >= 0) ARCS.splice(ri, 1);
+      if (page) { o.remove(); return; }
       if (!E2) document.body.classList.remove("e2-lock");
       o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 300);
       if (onClose) onClose();
     }
-    var onKey = function (e) { if (e.key === "Escape" && !TP && !document.querySelector(".e6.on")) close(); };
+    me.close = close;
+    var onKey = function (e) { if (!page && e.key === "Escape" && !TP && !document.querySelector(".e6.on, .e8")) close(); };
     document.addEventListener("keydown", onKey);
-    requestAnimationFrame(function () { o.classList.add("on"); o.focus({ preventScroll: true }); });
-    return { close: close };
+    if (!page) requestAnimationFrame(function () { o.classList.add("on"); o.focus({ preventScroll: true }); });
+    return me;
   }
   try {
-    var tq = qp("tape"), tn = tq === "x" ? TX : parseInt(tq, 10);
-    if (tn >= 1 && tn <= TX) setTimeout(function () { tapePlay(tn, null); }, 300);
+    var tq = qp("tape"), tn = tq === "x" ? TX : tq === "0" ? T0 : tq === "f" ? TF : parseInt(tq, 10);
+    if (tn >= 1 && tn <= TAPES.length) setTimeout(function () { tapePlay(tn, null); }, 300);
     else if (qp("why") === "1") setTimeout(function () { whyGo(null, true); }, 300);
+    else if (qp("diary") === "1") setTimeout(function () { diaryOpen(); }, 300);
   } catch (e) { /* old browser */ }
+  // ---- «Дневник»: unlocked when every tape is on the shelf. Ten pages in his hand (the cipher only; no translation is shown).
+  var DIARY = [
+    "BEFORE DAWN A LETTER CAME FROM THE ROYAL SCIENTISTS. NO STAMP. THE NAME ON IT WOULD NOT STAY STILL. I SHOULD HAVE BURNED IT.",
+    "THEY GAVE ME A RING TO BUILD. A DOOR WITH NO OTHER SIDE. YET. THE PLANS WERE ALREADY IN MY HAND WRITING.",
+    "FIRST TEST. THE LIGHT CAME BACK WRONG. SOMETHING ON THE OTHER SIDE TOOK A BREATH.",
+    "A SHADOW STANDS IN THE RING WHEN NO ONE LOOKS. IT DOES NOT MOVE. IT IS PATIENT.",
+    "THE OTHERS STOPPED COMING. THE RADIO STILL SAYS THEIR NAMES. I ANSWER FOR THEM.",
+    "I FELL AGAIN. I WOKE ON THE FLOOR AND MY HANDS HAD WRITTEN SYMBOLS I DO NOT KNOW.",
+    "MY CHILD DREW THE GATE WITH A HEART INSIDE. I NEVER TOLD THEM ABOUT THE HEART.",
+    "THE HEART FORMED BY ITSELF. RED. IT BEATS FASTER WHEN I AM AFRAID. IT IS HUNGRY.",
+    "THE ABYSS SINGS TO ME EVERY NIGHT. EACH NIGHT THERE IS LESS OF ME TO HEAR IT. TOMORROW, ONE STEP.",
+    "THE EXPERIMENT WORKED. I AM NO LONGER A MAN. I AM A VESSEL. THE SONG OF THE ABYSS EMPTIED ME, NIGHT BY NIGHT. THE LIGHTS YOU GATHER ARE NOT LIGHT. THEY ARE FEAR. I AM FED BY YOUR FEAR. THANK YOU FOR PLAYING."
+  ];
+  var K_FEAR = "sotg.fear";
+  function sparkWord() { return lsGet(K_FEAR) === "1" ? "FEAR " : "* "; }
+  function bookSvg() {
+    var B = ["..########..", ".#RRRRRRRR#.", ".#RRRRRRRR#.", ".#RR####RR#.", ".#RR#..#RR#.", ".#RR####RR#.", ".#RRRRRRRR#.", ".#RRRRRRRR#.", ".#RRRRRRRR#.", ".#LLLLLLLL#.", "..########.."], C = { "#": "#cfc8b8", R: "#6a0e18", L: "#e8e0cc" }, r = "";
+    B.forEach(function (row, y) { for (var i = 0; i < row.length; i++) if (C[row[i]]) r += '<rect x="' + i + '" y="' + y + '" width="1" height="1" fill="' + C[row[i]] + '"/>'; });
+    return '<svg class="e7-bk" viewBox="0 0 12 11" shape-rendering="crispEdges" aria-hidden="true">' + r + "</svg>";
+  }
+  var DIA = null;
+  function diaryOpen() {
+    if (DIA) return;
+    var o = el("div", "e8"); o.tabIndex = -1; o.setAttribute("role", "dialog"); o.setAttribute("aria-label", "Дневник");
+    o.innerHTML = '<div class="e8-book"><div class="e8-page"></div><div class="e8-nav"><button class="e8-prev" type="button" aria-label="Предыдущая страница">' + glyphSvg(">", "eg") + '</button><span class="e8-no"></span>' +
+      '<button class="e8-next" type="button" aria-label="Следующая страница">' + glyphSvg(">", "eg") + '</button></div></div><button class="e7-x e8-x" type="button" aria-label="Закрыть">✕</button>';
+    document.body.appendChild(o); var hadLock = document.body.classList.contains("e2-lock"); document.body.classList.add("e2-lock");
+    var pg = o.querySelector(".e8-page"), no = o.querySelector(".e8-no"), bk = o.querySelector(".e8-book"), i = 0, turning = false;
+    DIA = { o: o };
+    function fill(el2, k) { el2.innerHTML = '<p class="e8-d e2c" aria-hidden="true">' + gl(String(k + 1)) + '</p><div class="e8-t" role="img" aria-label="Запись шифром Врат">' + lineSvg(DIARY[k], "e8-g") + "</div>"; }
+    function paint() {
+      fill(pg, i); no.textContent = (i + 1) + " / " + DIARY.length;
+      o.querySelector(".e8-prev").disabled = i === 0; o.querySelector(".e8-next").disabled = i === DIARY.length - 1;
+      if (i === DIARY.length - 1) lsSet(K_FEAR, "1");
+    }
+    function turn(d) {
+      var j = i + d; if (turning || j < 0 || j >= DIARY.length) return;
+      if (RM || !pg.animate) { i = j; paint(); return; }
+      turning = true;
+      var leaf = el("div", "e8-page e8-leaf"); fill(leaf, i); bk.appendChild(leaf);      // the old page lifts and turns away; the next one is under it
+      i = j; paint(); pageSound();
+      var a = leaf.animate(d > 0 ? [{ transform: "perspective(1400px) rotateY(0deg)", filter: "brightness(1)" }, { transform: "perspective(1400px) rotateY(-100deg)", filter: "brightness(.45)", opacity: 0 }]
+        : [{ transform: "perspective(1400px) rotateY(0deg)", filter: "brightness(1)" }, { transform: "perspective(1400px) rotateY(100deg)", filter: "brightness(.45)", opacity: 0 }],
+        { duration: 620, easing: "cubic-bezier(.45,.05,.3,1)", fill: "forwards" });
+      leaf.style.transformOrigin = d > 0 ? "0 50%" : "100% 50%";
+      a.onfinish = function () { leaf.remove(); turning = false; };
+    }
+    function pageSound() { if (!SND.on) return; var a = ac(); if (!a) return; var t = a.currentTime, n = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(); n.buffer = noiseBuf(a); f.type = "bandpass"; f.frequency.value = 2400; f.Q.value = 0.6;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45); n.connect(f); f.connect(g); g.connect(a.destination); n.start(t); n.stop(t + 0.5); }
+    paint();
+    var close = function () { if (!DIA) return; DIA = null; document.removeEventListener("keydown", onKey); if (!hadLock) document.body.classList.remove("e2-lock"); o.classList.remove("on"); setTimeout(function () { o.remove(); }, RM ? 0 : 300); };
+    var onKey = function (e) { if (e.key === "Escape") { e.stopPropagation(); close(); } if (e.key === "ArrowRight") turn(1); if (e.key === "ArrowLeft") turn(-1); };
+    document.addEventListener("keydown", onKey);
+    o.addEventListener("click", function (e) { if (e.target.closest(".e8-x")) return close(); if (e.target.closest(".e8-next")) return turn(1); if (e.target.closest(".e8-prev")) return turn(-1); if (!e.target.closest(".e8-book")) close(); });
+    var sx = null; o.addEventListener("pointerdown", function (e) { sx = e.clientX; }); o.addEventListener("pointerup", function (e) { if (sx != null && Math.abs(e.clientX - sx) > 50) turn(e.clientX < sx ? 1 : -1); sx = null; });
+    requestAnimationFrame(function () { o.classList.add("on"); o.focus({ preventScroll: true }); });
+  }
   // ---- the letter: «ПИСЬМО №∞»
   var LETTER = "TO MY FAMILY. I DO NOT SLEEP ANYMORE. WHEN I DO, I DREAM OF THE GATE. A RED HEART IS BEATING INSIDE IT. IT CALLS ME BY A NAME I DO NOT REMEMBER. MY HANDS SHAKE. SOMETIMES I FALL AND WAKE UP HOURS LATER ON THE LAB FLOOR. THE OTHERS SAY I SPEAK IN SYMBOLS NOW. I THINK I AM BECOMING SOMETHING ELSE. IF I DIE, DO NOT LOOK FOR MY BODY. LOOK FOR THE LIGHT BEHIND THE GATE. - D.";
   var LTR = null;
